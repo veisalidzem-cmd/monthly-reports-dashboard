@@ -11,6 +11,7 @@ def load_sheet(sheet_name):
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     try:
         df = pd.read_csv(url)
+        # Нормализуем названия колонок: убираем пробелы по краям
         df.columns = df.columns.str.strip()
         return df
     except Exception as e:
@@ -141,54 +142,46 @@ for i, tab in enumerate(tabs):
             </div>
             """, unsafe_allow_html=True)
 
-        # === ПОДГОТОВКА ДАННЫХ ДЛЯ ГРАФИКОВ ===
-        # Убираем последнюю строку (суммы) и строки без РВК
-        data_for_charts = df.iloc[:-1].copy()
-        data_for_charts = data_for_charts.dropna(subset=["РВК"])
-        data_for_charts = data_for_charts[data_for_charts["РВК"].str.strip() != ""]
+        # === ПРОВЕРКА НАЛИЧИЯ НЕОБХОДИМЫХ КОЛОНОК ===
+        required_cols = ["РВК", "Всего", "Кол.закрытых ГИС"]
+        missing_cols = [col for col in required_cols if col not in df.columns]
 
-        if data_for_charts.empty:
-            st.info("Нет данных для визуализации по организациям.")
+        if missing_cols:
+            st.warning(f"Недостаточно данных для графиков (отсутствуют колонки: {', '.join(missing_cols)})")
             continue
 
-        # Пирог: распределение по "Всего"
-        if "Всего" in data_for_charts.columns:
-            pie_data = data_for_charts[["РВК", "Всего"]].copy()
-            pie_data["Всего"] = pd.to_numeric(pie_data["Всего"], errors="coerce").fillna(0)
-            pie_data = pie_data[pie_data["Всего"] > 0]
+        # Убираем последнюю строку (итоги)
+        data_for_charts = df.iloc[:-1].copy()
 
-            if not pie_data.empty:
-                st.subheader("Распределение заявок по организациям")
-                fig_pie = px.pie(pie_data, names="РВК", values="Всего", hole=0.4)
-                fig_pie.update_traces(textinfo='percent+label')
-                st.plotly_chart(fig_pie, use_container_width=True)
+        # Удаляем строки без РВК
+        data_for_charts = data_for_charts.dropna(subset=["РВК"])
+        data_for_charts = data_for_charts[data_for_charts["РВК"].astype(str).str.strip() != ""]
 
-        # Столбчатая диаграмма: "Всего" vs "Кол.закрытых ГИС"
-        if "Всего" in data_for_charts.columns and "Кол.закрытых ГИС" in data_for_charts.columns:
-            bar_data = data_for_charts[["РВК", "Всего", "Кол.закрытых ГИС"]].copy()
-            bar_data["Всего"] = pd.to_numeric(bar_data["Всего"], errors="coerce").fillna(0)
-            bar_data["Кол.закрытых ГИС"] = pd.to_numeric(bar_data["Кол.закрытых ГИС"], errors="coerce").fillna(0)
-            bar_data = bar_data[(bar_data["Всего"] > 0) | (bar_data["Кол.закрытых ГИС"] > 0)]
+        if data_for_charts.empty:
+            st.info("Нет данных по организациям.")
+            continue
 
-            if not bar_data.empty:
-                st.subheader("Сравнение заявок по организациям")
-                fig_bar = go.Figure()
-                fig_bar.add_trace(go.Bar(
-                    x=bar_data["РВК"],
-                    y=bar_data["Всего"],
-                    name="Всего заявок",
-                    marker_color="#2563EB"
-                ))
-                fig_bar.add_trace(go.Bar(
-                    x=bar_data["РВК"],
-                    y=bar_data["Кол.закрытых ГИС"],
-                    name="Закрытых",
-                    marker_color="#93C5FD"
-                ))
-                fig_bar.update_layout(
-                    barmode='group',
-                    xaxis_tickangle=-45,
-                    plot_bgcolor="white",
-                    paper_bgcolor="white"
-                )
-                st.plotly_chart(fig_bar, use_container_width=True)
+        # --- Пирог: Распределение по "Всего" ---
+        pie_data = data_for_charts[["РВК", "Всего"]].copy()
+        pie_data["Всего"] = pd.to_numeric(pie_data["Всего"], errors="coerce").fillna(0)
+        pie_data = pie_data[pie_data["Всего"] > 0]
+
+        if not pie_data.empty:
+            st.subheader("Распределение заявок по организациям")
+            fig_pie = px.pie(pie_data, names="РВК", values="Всего", hole=0.4)
+            fig_pie.update_traces(textinfo='percent+label')
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        # --- Столбчатая диаграмма ---
+        bar_data = data_for_charts[["РВК", "Всего", "Кол.закрытых ГИС"]].copy()
+        bar_data["Всего"] = pd.to_numeric(bar_data["Всего"], errors="coerce").fillna(0)
+        bar_data["Кол.закрытых ГИС"] = pd.to_numeric(bar_data["Кол.закрытых ГИС"], errors="coerce").fillna(0)
+        bar_data = bar_data[(bar_data["Всего"] > 0) | (bar_data["Кол.закрытых ГИС"] > 0)]
+
+        if not bar_data.empty:
+            st.subheader("Сравнение заявок по организациям")
+            fig_bar = go.Figure()
+            fig_bar.add_trace(go.Bar(x=bar_data["РВК"], y=bar_data["Всего"], name="Всего заявок", marker_color="#2563EB"))
+            fig_bar.add_trace(go.Bar(x=bar_data["РВК"], y=bar_data["Кол.закрытых ГИС"], name="Закрытых", marker_color="#93C5FD"))
+            fig_bar.update_layout(barmode='group', xaxis_tickangle=-45, plot_bgcolor="white", paper_bgcolor="white")
+            st.plotly_chart(fig_bar, use_container_width=True)
