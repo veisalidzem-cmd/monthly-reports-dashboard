@@ -71,8 +71,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Отчет по заявкам ЦДС водопровод")
-
+# Убираем общий заголовок — он будет внутри табов
 tabs = st.tabs([
     "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
     "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек", "Год"
@@ -92,40 +91,24 @@ for i, tab in enumerate(tabs):
             st.warning("Лист содержит меньше 14 строк. Данные не могут быть прочитаны.")
             continue
 
-        # Определяем период: ищем в строке 0 (первая строка) диапазон дат
+        # === ОПРЕДЕЛЕНИЕ ПЕРИОДА ===
         period_text = "Период не указан"
         first_row = df.iloc[0].astype(str).str.strip()
         for cell in first_row:
             if "01." in cell and "-" in cell and len(cell) > 10:
-                period_text = cell
+                period_text = f"Период {cell}"
                 break
 
         st.markdown(f'<div class="period">{period_text}</div>', unsafe_allow_html=True)
 
-        # === ИЗВЛЕЧЕНИЕ ЗАГОЛОВКОВ ИЗ СТРОКИ 3 (индекс 2) ===
-        headers = df.iloc[2].astype(str).str.strip().tolist()
-        col_names = {}
-        for j, header in enumerate(headers[:6]):  # Только первые 6 колонок
-            if j == 0:
-                col_names["РВК"] = header
-            elif j == 1:
-                col_names["Всего"] = header
-            elif j == 2:
-                col_names["Кол.закрытых ГИС"] = header
-            elif j == 3:
-                col_names["Кол.Открытых ГИС"] = header
-            elif j == 4:
-                col_names["Кол.отмененных ГИС"] = header
-            elif j == 5:
-                col_names["Кол.ошибочных ГИС"] = header
-
-        # === ИЗВЛЕЧЕНИЕ ИТОГОВЫХ МЕТРИК ИЗ СТРОКИ 14 (индекс 13) ===
+        # === ИЗВЛЕЧЕНИЕ МЕТРИК ИЗ СТРОКИ 14 (индекс 13) ===
         total_row = df.iloc[13]  # Строка 14 (индекс 13)
 
-        total = safe_int(total_row[1])  # B14
-        closed = safe_int(total_row[2])  # C14
-        open_ = safe_int(total_row[3])  # D14
-        canceled = safe_int(total_row[4])  # E14
+        total = safe_int(total_row[1])  # B14 — Всего
+        closed = safe_int(total_row[2])  # C14 — Закрытых
+        open_ = safe_int(total_row[3])  # D14 — Открытых
+        canceled = safe_int(total_row[4])  # E14 — Отмененных
+        erroneous = safe_int(total_row[5])  # F14 — Ошибочных
 
         # === КАРТОЧКИ ===
         col1, col2, col3, col4 = st.columns(4)
