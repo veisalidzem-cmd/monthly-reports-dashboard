@@ -6,11 +6,10 @@ import plotly.graph_objects as go
 GOOGLE_SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
 SHEETS = ["jan", "feb", "mar", "apr", "may", "june", "jule", "aug", "sept", "oct", "nov", "dec", "gen"]
 
-@st.cache_data(ttl=300)
+@st_cache_data(ttl=300)
 def load_sheet(sheet_name):
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     try:
-        # Читаем без заголовков — все строки как есть
         df = pd.read_csv(url, header=None)
         return df
     except Exception as e:
@@ -71,7 +70,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Убираем общий заголовок — он будет внутри табов
 tabs = st.tabs([
     "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
     "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек", "Год"
