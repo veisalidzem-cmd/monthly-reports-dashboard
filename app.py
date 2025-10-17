@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 GOOGLE_SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
 SHEETS = ["jan", "feb", "mar", "apr", "may", "june", "jule", "aug", "sept", "oct", "nov", "dec", "gen"]
 
-@st_cache_data(ttl=300)
+@st.cache_data(ttl=300)
 def load_sheet(sheet_name):
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     try:
