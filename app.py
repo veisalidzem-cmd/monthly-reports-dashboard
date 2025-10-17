@@ -150,9 +150,10 @@ for i, tab in enumerate(tabs):
         # Переименовываем колонки для удобства
         data_rows.columns = ["РВК", "Всего", "Кол.закрытых ГИС", "Кол.Открытых ГИС", "Кол.отмененных ГИС", "Кол.ошибочных ГИС"]
 
-        # Убираем строки, где РВК пустой
+        # Убираем строки, где РВК пустой или содержит "сумма"
         data_for_charts = data_rows.dropna(subset=["РВК"])
         data_for_charts = data_for_charts[data_for_charts["РВК"].astype(str).str.strip() != ""]
+        data_for_charts = data_for_charts[data_for_charts["РВК"].astype(str).str.strip().str.lower() != "сумма"]
 
         if data_for_charts.empty:
             st.info("Нет данных по организациям для визуализации.")
