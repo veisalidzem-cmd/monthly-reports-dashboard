@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import re
 
 GOOGLE_SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
 SHEETS = ["jan", "feb", "mar", "apr", "may", "june", "jule", "aug", "sept", "oct", "nov", "dec", "gen"]
@@ -24,7 +25,7 @@ def safe_int(val):
     except (ValueError, TypeError):
         return 0
 
-# === СТИЛЬ КАК НА LOVABLE ===
+# === СТИЛЬ ===
 st.markdown("""
 <style>
     .block-container {
@@ -35,11 +36,13 @@ st.markdown("""
     h1 {
         font-size: 2.2rem;
         font-weight: 700;
-        color: #3B82F6;
-        margin-bottom: 0.5rem;
+        background: linear-gradient(90deg, #3B82F6, #60A5FA);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
     .period {
-        font-size: 1rem;
+        font-size: 1.1rem;
         color: #6B7280;
         margin-bottom: 1.5rem;
     }
@@ -48,9 +51,6 @@ st.markdown("""
         border-radius: 12px;
         padding: 1rem;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
         height: 100%;
     }
     .metric-title {
@@ -70,6 +70,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# === ЗАГОЛОВОК ===
+st.title("Отчет по заявкам ЦДС водопровод")
+st.markdown('<div class="period">2025 год - РВК</div>', unsafe_allow_html=True)
+
+# === ТАБЫ ===
 tabs = st.tabs([
     "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
     "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек", "Год"
@@ -80,35 +85,27 @@ for i, tab in enumerate(tabs):
         sheet_name = SHEETS[i]
         df = load_sheet(sheet_name)
 
-        if df.empty:
-            st.info("Нет данных.")
+        if df.empty or len(df) < 14:
+            st.info("Нет данных или недостаточно строк.")
             continue
 
-        # Проверяем, достаточно ли строк
-        if len(df) < 14:
-            st.warning("Лист содержит меньше 14 строк. Данные не могут быть прочитаны.")
-            continue
-
-        # === ОПРЕДЕЛЕНИЕ ПЕРИОДА ===
+        # === ПЕРИОД ===
         period_text = "Период не указан"
-        first_row = df.iloc[0].astype(str).str.strip()
+        first_row = df.iloc[0].astype(str)
         for cell in first_row:
-            if "01." in cell and "-" in cell and len(cell) > 10:
-                period_text = f"Период {cell}"
+            match = re.search(r"\d{2}\.\d{2}\.\d{4}\s*-\s*\d{2}\.\d{2}\.\d{4}", str(cell))
+            if match:
+                period_text = f"Период {match.group(0)}"
                 break
-
         st.markdown(f'<div class="period">{period_text}</div>', unsafe_allow_html=True)
 
-        # === ИЗВЛЕЧЕНИЕ МЕТРИК ИЗ СТРОКИ 14 (индекс 13) ===
-        total_row = df.iloc[13]  # Строка 14 (индекс 13)
+        # === МЕТРИКИ ИЗ СТРОКИ 14 ===
+        total_row = df.iloc[13]
+        total = safe_int(total_row[1])  # B14
+        closed = safe_int(total_row[2])  # C14
+        open_ = safe_int(total_row[3])  # D14
+        canceled = safe_int(total_row[4])  # E14
 
-        total = safe_int(total_row[1])  # B14 — Всего
-        closed = safe_int(total_row[2])  # C14 — Закрытых
-        open_ = safe_int(total_row[3])  # D14 — Открытых
-        canceled = safe_int(total_row[4])  # E14 — Отмененных
-        erroneous = safe_int(total_row[5])  # F14 — Ошибочных
-
-        # === КАРТОЧКИ ===
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.markdown(f"""
@@ -143,20 +140,17 @@ for i, tab in enumerate(tabs):
             </div>
             """, unsafe_allow_html=True)
 
-        # === ПОДГОТОВКА ДАННЫХ ДЛЯ ГРАФИКОВ ===
-        # Данные по организациям: строки 4-13 (индексы 3-12), колонки 0-5
-        data_rows = df.iloc[3:13, :6]  # A4:F13
-
-        # Переименовываем колонки для удобства
+        # === ДАННЫЕ ДЛЯ ГРАФИКОВ (A4:F13) ===
+        data_rows = df.iloc[3:13, :6]
         data_rows.columns = ["РВК", "Всего", "Кол.закрытых ГИС", "Кол.Открытых ГИС", "Кол.отмененных ГИС", "Кол.ошибочных ГИС"]
 
-        # Убираем строки, где РВК пустой или содержит "сумма"
+        # Убираем пустые и "сумма"
         data_for_charts = data_rows.dropna(subset=["РВК"])
         data_for_charts = data_for_charts[data_for_charts["РВК"].astype(str).str.strip() != ""]
-        data_for_charts = data_for_charts[data_for_charts["РВК"].astype(str).str.strip().str.lower() != "сумма"]
+        data_for_charts = data_for_charts[~data_for_charts["РВК"].astype(str).str.contains("сумма", case=False, na=False)]
 
         if data_for_charts.empty:
-            st.info("Нет данных по организациям для визуализации.")
+            st.info("Нет данных для визуализации.")
             continue
 
         # --- Пирог ---
@@ -179,7 +173,7 @@ for i, tab in enumerate(tabs):
         if not bar_data.empty:
             st.subheader("Сравнение заявок по организациям")
             fig_bar = go.Figure()
-            fig_bar.add_trace(go.Bar(x=bar_data["РВК"], y=bar_data["Всего"], name="Всего заявок", marker_color="#2563EB"))
+            fig_bar.add_trace(go.Bar(x=bar_data["РВК"], y=bar_data["Всего"], name="Всего заявок", marker_color="#3B82F6"))
             fig_bar.add_trace(go.Bar(x=bar_data["РВК"], y=bar_data["Кол.закрытых ГИС"], name="Закрытых", marker_color="#93C5FD"))
             fig_bar.update_layout(barmode='group', xaxis_tickangle=-45, plot_bgcolor="white", paper_bgcolor="white")
             st.plotly_chart(fig_bar, use_container_width=True)
