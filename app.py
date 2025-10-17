@@ -11,14 +11,21 @@ def load_sheet(sheet_name):
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     try:
         df = pd.read_csv(url)
-        # Убираем лишние пробелы в названиях колонок
         df.columns = df.columns.str.strip()
         return df
     except Exception as e:
         st.error(f"Ошибка загрузки листа '{sheet_name}': {e}")
         return pd.DataFrame()
 
-# === СТИЛЬ КАК НА СКРИНШОТЕ ===
+def safe_int(val):
+    try:
+        if pd.isna(val) or val == "" or str(val).strip() == "":
+            return 0
+        return int(float(str(val).replace(" ", "").replace(",", ".")))
+    except (ValueError, TypeError):
+        return 0
+
+# === СТИЛЬ КАК НА LOVABLE ===
 st.markdown("""
 <style>
     .block-container {
@@ -50,9 +57,6 @@ st.markdown("""
     .metric-title {
         font-size: 0.85rem;
         color: #6B7280;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
     }
     .metric-value {
         font-size: 1.8rem;
@@ -67,10 +71,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# === ЗАГОЛОВОК ===
 st.title("Отчет по заявкам ЦДС водопровод")
 
-# === ТАБЫ МЕСЯЦЕВ ===
 tabs = st.tabs([
     "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
     "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек", "Год"
@@ -85,88 +87,108 @@ for i, tab in enumerate(tabs):
             st.info("Нет данных.")
             continue
 
-        # Определяем период (если есть строка с датами)
-        period_row = df[df.iloc[:, 0].astype(str).str.contains("01.", na=False)]
-        if not period_row.empty:
-            period_text = period_row.iloc[0, 0]  # Берём первую ячейку строки
-            st.markdown(f'<div class="period">{period_text}</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="period">Период не указан</div>', unsafe_allow_html=True)
+        # Определяем период: ищем строку с диапазоном дат (например, "01.11.2025 - 30.11.2025")
+        period_text = "Период не указан"
+        for idx, row in df.iterrows():
+            first_cell = str(row.iloc[0]).strip()
+            if "01." in first_cell and "-" in first_cell and len(first_cell) > 10:
+                period_text = first_cell
+                break
 
-        # Ищем строку с "сумма" (или последнюю строку с числами)
-        # Предполагаем, что суммы находятся в последней строке
-        total_row = df.iloc[-1].copy()  # Последняя строка
+        st.markdown(f'<div class="period">{period_text}</div>', unsafe_allow_html=True)
 
-        # Извлекаем метрики
-        total = total_row.get("Всего", 0)
-        closed = total_row.get("Кол.закрытых ГИС", 0)
-        open_ = total_row.get("Кол.Открытых ГИС", 0)
-        canceled = total_row.get("Кол.отмененных ГИС", 0)
+        # Берём последнюю строку как строку с суммами
+        total_row = df.iloc[-1]
 
-        # === ЧЕТЫРЕ КАРТОЧКИ ===
+        # Извлекаем метрики безопасно
+        total = safe_int(total_row.get("Всего", 0))
+        closed = safe_int(total_row.get("Кол.закрытых ГИС", 0))
+        open_ = safe_int(total_row.get("Кол.Открытых ГИС", 0))
+        canceled = safe_int(total_row.get("Кол.отмененных ГИС", 0))
+
+        # === КАРТОЧКИ ===
         col1, col2, col3, col4 = st.columns(4)
-
         with col1:
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-title">Всего заявок</div>
-                <div class="metric-value">{int(total)}</div>
+                <div class="metric-value">{total}</div>
                 <div class="metric-subtitle">За отчетный период</div>
             </div>
             """, unsafe_allow_html=True)
-
         with col2:
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-title">Закрытых заявок</div>
-                <div class="metric-value">{int(closed)}</div>
+                <div class="metric-value">{closed}</div>
                 <div class="metric-subtitle">100% выполнение</div>
             </div>
             """, unsafe_allow_html=True)
-
         with col3:
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-title">Открытых заявок</div>
-                <div class="metric-value">{int(open_)}</div>
+                <div class="metric-value">{open_}</div>
                 <div class="metric-subtitle">Требуют внимания</div>
             </div>
             """, unsafe_allow_html=True)
-
         with col4:
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-title">Отмененных заявок</div>
-                <div class="metric-value">{int(canceled)}</div>
+                <div class="metric-value">{canceled}</div>
                 <div class="metric-subtitle">Отменено или ошибочно</div>
             </div>
             """, unsafe_allow_html=True)
 
-        # === ГРАФИКИ ===
-        # Убираем последнюю строку (сумму) и пустые строки
-        data_for_charts = df.iloc[:-1].dropna(subset=["РВК"]).copy()
+        # === ПОДГОТОВКА ДАННЫХ ДЛЯ ГРАФИКОВ ===
+        # Убираем последнюю строку (суммы) и строки без РВК
+        data_for_charts = df.iloc[:-1].copy()
+        data_for_charts = data_for_charts.dropna(subset=["РВК"])
+        data_for_charts = data_for_charts[data_for_charts["РВК"].str.strip() != ""]
 
-        if "РВК" in data_for_charts.columns and "Всего" in data_for_charts.columns:
-            # Пирог: Распределение по организациям
-            st.subheader("Распределение заявок по организациям")
+        if data_for_charts.empty:
+            st.info("Нет данных для визуализации по организациям.")
+            continue
+
+        # Пирог: распределение по "Всего"
+        if "Всего" in data_for_charts.columns:
             pie_data = data_for_charts[["РВК", "Всего"]].copy()
-            pie_data = pie_data[pie_data["Всего"] > 0]  # Только с ненулевыми значениями
+            pie_data["Всего"] = pd.to_numeric(pie_data["Всего"], errors="coerce").fillna(0)
+            pie_data = pie_data[pie_data["Всего"] > 0]
+
             if not pie_data.empty:
+                st.subheader("Распределение заявок по организациям")
                 fig_pie = px.pie(pie_data, names="РВК", values="Всего", hole=0.4)
                 fig_pie.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
-            else:
-                st.info("Нет данных для построения пирога.")
 
-            # Столбчатая диаграмма: Сравнение по организациям
-            st.subheader("Сравнение заявок по организациям")
+        # Столбчатая диаграмма: "Всего" vs "Кол.закрытых ГИС"
+        if "Всего" in data_for_charts.columns and "Кол.закрытых ГИС" in data_for_charts.columns:
             bar_data = data_for_charts[["РВК", "Всего", "Кол.закрытых ГИС"]].copy()
-            bar_data = bar_data[bar_data["Всего"] > 0]  # Только с ненулевыми значениями
+            bar_data["Всего"] = pd.to_numeric(bar_data["Всего"], errors="coerce").fillna(0)
+            bar_data["Кол.закрытых ГИС"] = pd.to_numeric(bar_data["Кол.закрытых ГИС"], errors="coerce").fillna(0)
+            bar_data = bar_data[(bar_data["Всего"] > 0) | (bar_data["Кол.закрытых ГИС"] > 0)]
+
             if not bar_data.empty:
+                st.subheader("Сравнение заявок по организациям")
                 fig_bar = go.Figure()
-                fig_bar.add_trace(go.Bar(x=bar_data["РВК"], y=bar_data["Всего"], name="Всего заявок", marker_color="#2563EB"))
-                fig_bar.add_trace(go.Bar(x=bar_data["РВК"], y=bar_data["Кол.закрытых ГИС"], name="Закрытых", marker_color="#93C5FD"))
-                fig_bar.update_layout(barmode='group', showlegend=True, xaxis_tickangle=-45)
+                fig_bar.add_trace(go.Bar(
+                    x=bar_data["РВК"],
+                    y=bar_data["Всего"],
+                    name="Всего заявок",
+                    marker_color="#2563EB"
+                ))
+                fig_bar.add_trace(go.Bar(
+                    x=bar_data["РВК"],
+                    y=bar_data["Кол.закрытых ГИС"],
+                    name="Закрытых",
+                    marker_color="#93C5FD"
+                ))
+                fig_bar.update_layout(
+                    barmode='group',
+                    xaxis_tickangle=-45,
+                    plot_bgcolor="white",
+                    paper_bgcolor="white"
+                )
                 st.plotly_chart(fig_bar, use_container_width=True)
-            else:
-                st.info("Нет данных для построения столбчатой диаграммы.")
