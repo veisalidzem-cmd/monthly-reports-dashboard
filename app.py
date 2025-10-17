@@ -10,9 +10,8 @@ SHEETS = ["jan", "feb", "mar", "apr", "may", "june", "jule", "aug", "sept", "oct
 def load_sheet(sheet_name):
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     try:
-        df = pd.read_csv(url)
-        # Нормализуем названия колонок: убираем пробелы по краям
-        df.columns = df.columns.str.strip()
+        # Читаем без заголовков — все строки как есть
+        df = pd.read_csv(url, header=None)
         return df
     except Exception as e:
         st.error(f"Ошибка загрузки листа '{sheet_name}': {e}")
@@ -88,24 +87,45 @@ for i, tab in enumerate(tabs):
             st.info("Нет данных.")
             continue
 
-        # Определяем период: ищем строку с диапазоном дат (например, "01.11.2025 - 30.11.2025")
+        # Проверяем, достаточно ли строк
+        if len(df) < 14:
+            st.warning("Лист содержит меньше 14 строк. Данные не могут быть прочитаны.")
+            continue
+
+        # Определяем период: ищем в строке 0 (первая строка) диапазон дат
         period_text = "Период не указан"
-        for idx, row in df.iterrows():
-            first_cell = str(row.iloc[0]).strip()
-            if "01." in first_cell and "-" in first_cell and len(first_cell) > 10:
-                period_text = first_cell
+        first_row = df.iloc[0].astype(str).str.strip()
+        for cell in first_row:
+            if "01." in cell and "-" in cell and len(cell) > 10:
+                period_text = cell
                 break
 
         st.markdown(f'<div class="period">{period_text}</div>', unsafe_allow_html=True)
 
-        # Берём последнюю строку как строку с суммами
-        total_row = df.iloc[-1]
+        # === ИЗВЛЕЧЕНИЕ ЗАГОЛОВКОВ ИЗ СТРОКИ 3 (индекс 2) ===
+        headers = df.iloc[2].astype(str).str.strip().tolist()
+        col_names = {}
+        for j, header in enumerate(headers[:6]):  # Только первые 6 колонок
+            if j == 0:
+                col_names["РВК"] = header
+            elif j == 1:
+                col_names["Всего"] = header
+            elif j == 2:
+                col_names["Кол.закрытых ГИС"] = header
+            elif j == 3:
+                col_names["Кол.Открытых ГИС"] = header
+            elif j == 4:
+                col_names["Кол.отмененных ГИС"] = header
+            elif j == 5:
+                col_names["Кол.ошибочных ГИС"] = header
 
-        # Извлекаем метрики безопасно
-        total = safe_int(total_row.get("Всего", 0))
-        closed = safe_int(total_row.get("Кол.закрытых ГИС", 0))
-        open_ = safe_int(total_row.get("Кол.Открытых ГИС", 0))
-        canceled = safe_int(total_row.get("Кол.отмененных ГИС", 0))
+        # === ИЗВЛЕЧЕНИЕ ИТОГОВЫХ МЕТРИК ИЗ СТРОКИ 14 (индекс 13) ===
+        total_row = df.iloc[13]  # Строка 14 (индекс 13)
+
+        total = safe_int(total_row[1])  # B14
+        closed = safe_int(total_row[2])  # C14
+        open_ = safe_int(total_row[3])  # D14
+        canceled = safe_int(total_row[4])  # E14
 
         # === КАРТОЧКИ ===
         col1, col2, col3, col4 = st.columns(4)
@@ -142,26 +162,22 @@ for i, tab in enumerate(tabs):
             </div>
             """, unsafe_allow_html=True)
 
-        # === ПРОВЕРКА НАЛИЧИЯ НЕОБХОДИМЫХ КОЛОНОК ===
-        required_cols = ["РВК", "Всего", "Кол.закрытых ГИС"]
-        missing_cols = [col for col in required_cols if col not in df.columns]
+        # === ПОДГОТОВКА ДАННЫХ ДЛЯ ГРАФИКОВ ===
+        # Данные по организациям: строки 4-13 (индексы 3-12), колонки 0-5
+        data_rows = df.iloc[3:13, :6]  # A4:F13
 
-        if missing_cols:
-            st.warning(f"Недостаточно данных для графиков (отсутствуют колонки: {', '.join(missing_cols)})")
-            continue
+        # Переименовываем колонки для удобства
+        data_rows.columns = ["РВК", "Всего", "Кол.закрытых ГИС", "Кол.Открытых ГИС", "Кол.отмененных ГИС", "Кол.ошибочных ГИС"]
 
-        # Убираем последнюю строку (итоги)
-        data_for_charts = df.iloc[:-1].copy()
-
-        # Удаляем строки без РВК
-        data_for_charts = data_for_charts.dropna(subset=["РВК"])
+        # Убираем строки, где РВК пустой
+        data_for_charts = data_rows.dropna(subset=["РВК"])
         data_for_charts = data_for_charts[data_for_charts["РВК"].astype(str).str.strip() != ""]
 
         if data_for_charts.empty:
-            st.info("Нет данных по организациям.")
+            st.info("Нет данных по организациям для визуализации.")
             continue
 
-        # --- Пирог: Распределение по "Всего" ---
+        # --- Пирог ---
         pie_data = data_for_charts[["РВК", "Всего"]].copy()
         pie_data["Всего"] = pd.to_numeric(pie_data["Всего"], errors="coerce").fillna(0)
         pie_data = pie_data[pie_data["Всего"] > 0]
