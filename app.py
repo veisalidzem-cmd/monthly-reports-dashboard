@@ -47,24 +47,41 @@ for i, tab in enumerate(tabs):
             continue
 
         # === ПЕРИОД ИЗ СТРОКИ 2 ===
-        period_raw = str(df.iloc[1, 0]).strip()  # Вторая строка, первая колонка
-        if " - " in period_raw and "." in period_raw:
-            period_text = f"Период {period_raw}"
-        else:
-            period_text = "Период не указан"
+        period_text = "Период не указан"
+        row2 = df.iloc[1].astype(str).str.strip()
+        for cell in row2:
+            if "01." in cell and "-" in cell and len(cell) > 10:
+                period_text = f"Период {cell}"
+                break
         st.markdown(f'<div class="period">{period_text}</div>', unsafe_allow_html=True)
 
-        # === МЕТРИКИ ИЗ СТРОКИ 14 (ИНДЕКС 13) ===
+        # === МЕТРИКИ ИЗ СТРОКИ 14 ===
         total_row = df.iloc[13]
-        # Убедимся, что строка содержит 6 элементов
         if len(total_row) < 6:
             st.warning("Недостаточно данных в строке итогов.")
             continue
 
-        total = int(total_row[1]) if pd.notna(total_row[1]) and str(total_row[1]).replace('.','',1).isdigit() else 0
-        closed = int(total_row[2]) if pd.notna(total_row[2]) and str(total_row[2]).replace('.','',1).isdigit() else 0
-        open_ = int(total_row[3]) if pd.notna(total_row[3]) and str(total_row[3]).replace('.','',1).isdigit() else 0
-        canceled = int(total_row[4]) if pd.notna(total_row[4]) and str(total_row[4]).replace('.','',1).isdigit() else 0
+        total = 0
+        closed = 0
+        open_ = 0
+        canceled = 0
+
+        try:
+            total = int(float(str(total_row[1]).replace(",", ".")))
+        except:
+            pass
+        try:
+            closed = int(float(str(total_row[2]).replace(",", ".")))
+        except:
+            pass
+        try:
+            open_ = int(float(str(total_row[3]).replace(",", ".")))
+        except:
+            pass
+        try:
+            canceled = int(float(str(total_row[4]).replace(",", ".")))
+        except:
+            pass
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -100,26 +117,25 @@ for i, tab in enumerate(tabs):
             </div>
             """, unsafe_allow_html=True)
 
-        # === ДАННЫЕ ДЛЯ ГРАФИКОВ: СТРОКИ 4–13 (ИНДЕКСЫ 3–12) ===
+        # === ДАННЫЕ ДЛЯ ГРАФИКОВ: СТРОКИ 4–13 ===
         data_rows = df.iloc[3:13].copy()
-        if data_rows.empty or len(data_rows.columns) < 6:
-            st.info("Нет данных для графиков.")
+        if len(data_rows.columns) < 6:
+            st.info("Недостаточно колонок для графиков.")
             continue
 
-        data_rows = data_rows.iloc[:, :6]
         data_rows.columns = ["РВК", "Всего", "Кол.закрытых ГИС", "Кол.Открытых ГИС", "Кол.отмененных ГИС", "Кол.ошибочных ГИС"]
 
-        # Убираем строку "сумма", пустые и NaN
-        data_rows = data_rows.dropna(subset=["РВК"])
-        data_rows = data_rows[data_rows["РВК"].astype(str).str.strip() != ""]
-        data_rows = data_rows[~data_rows["РВК"].astype(str).str.contains("сумма", case=False, na=False)]
+        # Убираем строки, где РВК пустой или содержит "сумма"
+        data_for_charts = data_rows.dropna(subset=["РВК"])
+        data_for_charts = data_for_charts[data_for_charts["РВК"].astype(str).str.strip() != ""]
+        data_for_charts = data_for_charts[~data_for_charts["РВК"].astype(str).str.contains("сумма", case=False, na=False)]
 
-        if data_rows.empty:
-            st.info("Нет организаций для визуализации.")
+        if data_for_charts.empty:
+            st.info("Нет данных для визуализации.")
             continue
 
         # --- Пирог ---
-        pie_data = data_rows[["РВК", "Всего"]].copy()
+        pie_data = data_for_charts[["РВК", "Всего"]].copy()
         pie_data["Всего"] = pd.to_numeric(pie_data["Всего"], errors="coerce").fillna(0)
         pie_data = pie_data[pie_data["Всего"] > 0]
 
@@ -130,7 +146,7 @@ for i, tab in enumerate(tabs):
             st.plotly_chart(fig_pie, use_container_width=True)
 
         # --- Столбчатая диаграмма ---
-        bar_data = data_rows[["РВК", "Всего", "Кол.закрытых ГИС"]].copy()
+        bar_data = data_for_charts[["РВК", "Всего", "Кол.закрытых ГИС"]].copy()
         bar_data["Всего"] = pd.to_numeric(bar_data["Всего"], errors="coerce").fillna(0)
         bar_data["Кол.закрытых ГИС"] = pd.to_numeric(bar_data["Кол.закрытых ГИС"], errors="coerce").fillna(0)
         bar_data = bar_data[(bar_data["Всего"] > 0) | (bar_data["Кол.закрытых ГИС"] > 0)]
