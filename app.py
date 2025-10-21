@@ -10,98 +10,128 @@ import pytz
 # ⬇️ Первая команда Streamlit
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
 
-# === Настройки темы и цветов ===
-with st.sidebar:
-    st.markdown("### 🎨 Оформление")
-    theme = st.radio("Тема", ["Светлая", "Тёмная"], index=0, horizontal=True)
-    st.markdown("### 🖨️ Печать")
-    st.info("Для печати: Ctrl+P → «Сохранить как PDF»")
+# === Автоматическая тема + кнопка переключения ===
+st.markdown("""
+<script>
+    const isMobile = window.innerWidth < 768;
+    const savedTheme = localStorage.getItem('theme');
+    const defaultTheme = savedTheme || (isMobile ? 'dark' : 'light');
+    
+    if (defaultTheme === 'dark') {
+        document.documentElement.style.setProperty('--bg-color', '#0f172a');
+        document.documentElement.style.setProperty('--text-color', '#f1f5f9');
+        document.documentElement.style.setProperty('--metric-label', '#cbd5e1');
+        document.documentElement.style.setProperty('--metric-value', '#f1f5f9');
+        document.documentElement.style.setProperty('--table-header', '#1e293b');
+        document.documentElement.style.setProperty('--table-cell', '#1e293b');
+        document.documentElement.style.setProperty('--table-text', '#e2e8f0');
+        document.documentElement.style.setProperty('--shadow', '0 4px 12px rgba(0,0,0,0.4)');
+        document.documentElement.style.setProperty('--hover-shadow', '0 6px 16px rgba(0,0,0,0.5)');
+    } else {
+        document.documentElement.style.setProperty('--bg-color', '#ffffff');
+        document.documentElement.style.setProperty('--text-color', '#1e293b');
+        document.documentElement.style.setProperty('--metric-label', '#475569');
+        document.documentElement.style.setProperty('--metric-value', '#1e293b');
+        document.documentElement.style.setProperty('--table-header', '#e2e8f0');
+        document.documentElement.style.setProperty('--table-cell', 'white');
+        document.documentElement.style.setProperty('--table-text', '#334155');
+        document.documentElement.style.setProperty('--shadow', '0 4px 12px rgba(0,0,0,0.08)');
+        document.documentElement.style.setProperty('--hover-shadow', '0 6px 16px rgba(0,0,0,0.12)');
+    }
 
-# Цветовая палитра
-COLORS = {
-    "primary": "#0d9488",
-    "secondary": "#0ea5e9",
-    "warning": "#f59e0b",
-    "danger": "#ef4444",
-    "light_bg": "#ffffff",
-    "dark_bg": "#0f172a",
-    "light_text": "#1e293b",
-    "dark_text": "#f1f5f9"
-}
+    window.toggleTheme = () => {
+        const current = localStorage.getItem('theme') || (isMobile ? 'dark' : 'light');
+        const newTheme = current === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('theme', newTheme);
+        location.reload();
+    };
+</script>
 
-# Определяем bg и text ДО использования в CSS
-if theme == "Тёмная":
-    bg = COLORS["dark_bg"]
-    text = COLORS["dark_text"]
-else:
-    bg = COLORS["light_bg"]  # белый фон для печати и светлой темы
-    text = COLORS["light_text"]
-
-# === CSS: адаптивный + печать + мобильный ===
-st.markdown(f"""
 <style>
-    .main {{ background-color: {bg}; color: {text}; padding: 10px !important; }}
-    .stApp {{ background-color: {bg}; }}
+    :root {
+        --bg-color: #ffffff;
+        --text-color: #1e293b;
+        --metric-label: #475569;
+        --metric-value: #1e293b;
+        --table-header: #e2e8f0;
+        --table-cell: white;
+        --table-text: #334155;
+        --shadow: 0 4px 12px rgba(0,0,0,0.08);
+        --hover-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    }
 
-    h1 {{ font-size: 1.8rem; margin-bottom: 0.4em; font-weight: 700; }}
-    h2 {{ font-size: 1.4rem; margin-top: 1.2em; margin-bottom: 0.6em; font-weight: 600; }}
+    .main { background-color: var(--bg-color); color: var(--text-color); padding: 10px !important; }
+    .stApp { background-color: var(--bg-color); }
 
-    /* Кнопки — удобные для касания */
-    .stButton > button {{
-        height: 48px !important;
-        font-size: 1rem !important;
-        font-weight: 500 !important;
-        padding: 0 12px !important;
-        white-space: nowrap !important;
+    h1, h2, h3 { color: var(--text-color) !important; }
+
+    [data-testid="stMetricLabel"] { color: var(--metric-label) !important; }
+    [data-testid="stMetricValue"] { color: var(--metric-value) !important; }
+
+    .dataframe th { background-color: var(--table-header) !important; color: var(--text-color) !important; }
+    .dataframe td { background-color: var(--table-cell) !important; color: var(--table-text) !important; }
+
+    .plotly-graph-div {
+        box-shadow: var(--shadow) !important;
         border-radius: 8px !important;
-        width: 100% !important;
-    }}
+    }
+    .plotly-graph-div:hover {
+        box-shadow: var(--hover-shadow) !important;
+    }
 
-    @media (max-width: 480px) {{
-        .stButton > button {{
-            font-size: 0.95rem !important;
-            height: 46px !important;
-        }}
-        h1 {{ font-size: 1.6rem !important; }}
-        h2 {{ font-size: 1.3rem !important; }}
-    }}
-
-    /* Метрики */
-    [data-testid="stMetricLabel"] {{ font-size: 0.9rem !important; }}
-    [data-testid="stMetricValue"] {{ font-size: 1.4rem !important; }}
-
-    /* Графики */
-    .plotly-graph-div {{
-        border-radius: 8px !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
-        margin-bottom: 12px !important;
-    }}
-
-    /* Таблица */
-    .dataframe {{
-        font-size: 0.95rem;
+    #theme-toggle {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        z-index: 100;
+        background: var(--table-cell);
+        border: 1px solid #cbd5e1;
         border-radius: 6px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-        margin-bottom: 16px;
-    }}
-    .dataframe th, .dataframe td {{
-        padding: 8px 10px !important;
-    }}
+        padding: 6px 10px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    #theme-toggle:hover {
+        background: #f1f5f9;
+    }
 
-    /* Печать */
-    @media print {{
-        .sidebar, .stSidebar, [data-testid="stSidebar"],
-        .stButton, .stRadio, .stCheckbox {{
-            display: none !important;
-        }}
-        .main {{ padding: 0 !important; }}
-        .plotly-graph-div {{ box-shadow: none !important; }}
-        body {{
+    /* Печать — уменьшаем размеры */
+    @media print {
+        #theme-toggle { display: none !important; }
+        body {
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
-        }}
-    }}
+        }
+        .main {
+            padding: 0 !important;
+            font-size: 0.9rem !important;
+        }
+        h1 { font-size: 1.4rem !important; margin-bottom: 0.3em; }
+        h2 { font-size: 1.2rem !important; margin-top: 1em; margin-bottom: 0.5em; }
+        [data-testid="stMetricValue"] { font-size: 1.2rem !important; }
+        .dataframe {
+            font-size: 0.85rem !important;
+            margin-bottom: 10px !important;
+        }
+        .dataframe th, .dataframe td {
+            padding: 6px 8px !important;
+        }
+        .plotly-graph-div {
+            margin-bottom: 10px !important;
+        }
+        /* Принудительно масштабируем на 85% для A4 */
+        @page {
+            size: A4 portrait;
+            margin: 1cm;
+        }
+        * {
+            zoom: 0.85 !important;
+        }
+    }
 </style>
+
+<button id="theme-toggle" onclick="toggleTheme()">🌓 Тема</button>
 """, unsafe_allow_html=True)
 
 # === Заголовок ===
@@ -115,10 +145,10 @@ SHEET_NAMES = {
     "mar": "mar",
     "apr": "apr",
     "may": "may",
-    "jun": "june",    # исправлено
-    "jul": "jule",    # исправлено
+    "jun": "june",
+    "jul": "jule",
     "aug": "aug",
-    "sep": "sept",    # исправлено
+    "sep": "sept",
     "oct": "oct",
     "nov": "nov",
     "dec": "dec",
@@ -136,7 +166,6 @@ MONTH_KEYS = list(DISPLAY_NAMES.keys())
 # === Адаптивные кнопки месяцев ===
 st.markdown("#### Период:")
 
-# Группируем по 4 кнопки в строку
 buttons_per_row = 4
 months = list(DISPLAY_NAMES.items())
 
@@ -152,7 +181,6 @@ for i in range(0, len(months), buttons_per_row):
             ):
                 st.session_state.selected = key
 
-# По умолчанию — январь
 selected = st.session_state.get("selected", "jan")
 
 # === Подключение к Google Sheets ===
@@ -196,7 +224,7 @@ def load_data(period_key):
         normalized.append(row[:len(columns)])
     return pd.DataFrame(normalized, columns=columns)
 
-# === Загрузка и обработка данных ===
+# === Загрузка данных ===
 try:
     df = load_data(selected)
 except Exception as e:
@@ -259,9 +287,9 @@ if not active.empty:
             y=["Закрыто", "Открыто", "Отменено"],
             barmode="stack",
             color_discrete_map={
-                "Закрыто": COLORS["primary"],
-                "Открыто": COLORS["warning"],
-                "Отменено": COLORS["danger"]
+                "Закрыто": "#0d9488",
+                "Открыто": "#f59e0b",
+                "Отменено": "#ef4444"
             }
         )
         fig2.update_layout(
@@ -287,7 +315,7 @@ display_df = df.rename(columns={
 st.subheader("Детальная информация")
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-# === Подпись с временем Астаны ===
+# === Подпись ===
 astana_tz = pytz.timezone("Asia/Almaty")
 current_time = datetime.now(astana_tz).strftime('%d.%m.%Y %H:%M')
 st.caption(f"Данные обновлены: {current_time} (Астана)")
