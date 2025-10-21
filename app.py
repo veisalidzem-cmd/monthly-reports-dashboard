@@ -50,29 +50,31 @@ def load_data(period_key: str) -> pd.DataFrame:
     sheet_name = SHEET_NAMES[period_key]
     worksheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
     
-    all_values = worksheet.get_all_values()
+    # Читаем ТОЛЬКО диапазон A4:F13 (10 строк данных)
+    # Если у тебя в будущем будет больше/меньше строк — подправь
+    range_name = "A4:F13"
+    try:
+        values = worksheet.get(range_name)
+    except Exception as e:
+        # Если диапазон пуст или ошибка — возвращаем пустой DF
+        values = []
     
-    # Если нет данных или только шапка — возвращаем пустой DF
-    if len(all_values) <= 1:
-        return pd.DataFrame(columns=["organization", "total", "closed", "open", "cancelled", "erroneous"])
-    
-    # Пропускаем первую строку (шапку), берём всё остальное
-    data_rows = all_values[1:]
-    
-    # Жёстко заданные колонки — порядок должен совпадать с таблицей
     columns = ["organization", "total", "closed", "open", "cancelled", "erroneous"]
     
-    # Нормализуем строки до нужной длины
-    normalized_rows = []
-    for row in data_rows:
-        # Дополняем пустыми значениями, если не хватает колонок
+    if not values:
+        return pd.DataFrame(columns=columns)
+    
+    # Очистка: убираем строки, где первая ячейка пустая
+    cleaned = [row for row in values if row and str(row[0]).strip()]
+    
+    # Дополняем до 6 колонок, если нужно
+    normalized = []
+    for row in cleaned:
         while len(row) < len(columns):
             row.append("")
-        # Обрезаем лишнее
-        normalized_rows.append(row[:len(columns)])
+        normalized.append(row[:len(columns)])
     
-    df = pd.DataFrame(normalized_rows, columns=columns)
-    return df
+    return pd.DataFrame(normalized, columns=columns)
 
 # === Streamlit UI ===
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
