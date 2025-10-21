@@ -146,9 +146,9 @@ SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
 
 MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "year"]
 DISPLAY_NAMES = {
-    "jan": "Янв", "feb": "Фев", "mar": "Мар", "apr": "Апр", "may": "Май",
-    "jun": "Июн", "jul": "Июл", "aug": "Авг", "sep": "Сен", "oct": "Окт",
-    "nov": "Ноя", "dec": "Дек", "year": "Год"
+    "jan": "Январь", "feb": "Февраль", "mar": "Март", "apr": "Апрель", "may": "Май",
+    "jun": "Июнь", "jul": "Июль", "aug": "Август", "sep": "Сентябрь", "oct": "Октябрь",
+    "nov": "Ноябрь", "dec": "Декабрь", "year": "Год"
 }
 
 SHEET_NAMES = {
