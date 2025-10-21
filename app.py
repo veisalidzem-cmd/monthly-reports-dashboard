@@ -153,7 +153,7 @@ DISPLAY_NAMES = {
 
 SHEET_NAMES = {
     "jan": "jan", "feb": "feb", "mar": "mar", "apr": "apr", "may": "may",
-    "jun": "jun", "jul": "jul", "aug": "aug", "sep": "sep", "oct": "oct",
+    "jun": "june", "jul": "jule", "aug": "aug", "sep": "sept", "oct": "oct",
     "nov": "nov", "dec": "dec", "year": "gen"
 }
 
