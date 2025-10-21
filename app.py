@@ -9,24 +9,12 @@ import json
 # === Конфигурация ===
 SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
 
-# Сопоставление: ключ выбора → имя листа в Google Sheets
 SHEET_NAMES = {
-    "jan": "jan",
-    "feb": "feb",
-    "mar": "mar",
-    "apr": "apr",
-    "may": "may",
-    "jun": "jun",
-    "jul": "jul",
-    "aug": "aug",
-    "sep": "sep",
-    "oct": "oct",
-    "nov": "nov",
-    "dec": "dec",
-    "year": "gen",  # ← годовой отчёт на листе "gen"
+    "jan": "jan", "feb": "feb", "mar": "mar", "apr": "apr", "may": "may",
+    "jun": "jun", "jul": "jul", "aug": "aug", "sep": "sep", "oct": "oct",
+    "nov": "nov", "dec": "dec", "year": "gen"
 }
 
-# Отображаемые названия месяцев
 DISPLAY_NAMES = {
     "jan": "Янв", "feb": "Фев", "mar": "Мар", "apr": "Апр", "may": "Май",
     "jun": "Июн", "jul": "Июл", "aug": "Авг", "sep": "Сен", "oct": "Окт",
@@ -37,7 +25,7 @@ DISPLAY_NAMES = {
 @st.cache_resource
 def get_client():
     try:
-        # Для Streamlit Cloud
+        # Streamlit Cloud
         info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
         creds = Credentials.from_service_account_info(
             info,
@@ -47,7 +35,7 @@ def get_client():
             ]
         )
     except KeyError:
-        # Для локального запуска (credentials.json в корне)
+        # Локально
         creds = Credentials.from_service_account_file(
             "credentials.json",
             scopes=[
@@ -60,16 +48,37 @@ def get_client():
 def load_data(period_key: str) -> pd.DataFrame:
     client = get_client()
     sheet_name = SHEET_NAMES[period_key]
-    sheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
-    records = sheet.get_all_records()
-    return pd.DataFrame(records)
+    worksheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
+    
+    all_values = worksheet.get_all_values()
+    
+    # Если нет данных или только шапка — возвращаем пустой DF
+    if len(all_values) <= 1:
+        return pd.DataFrame(columns=["organization", "total", "closed", "open", "cancelled", "erroneous"])
+    
+    # Пропускаем первую строку (шапку), берём всё остальное
+    data_rows = all_values[1:]
+    
+    # Жёстко заданные колонки — порядок должен совпадать с таблицей
+    columns = ["organization", "total", "closed", "open", "cancelled", "erroneous"]
+    
+    # Нормализуем строки до нужной длины
+    normalized_rows = []
+    for row in data_rows:
+        # Дополняем пустыми значениями, если не хватает колонок
+        while len(row) < len(columns):
+            row.append("")
+        # Обрезаем лишнее
+        normalized_rows.append(row[:len(columns)])
+    
+    df = pd.DataFrame(normalized_rows, columns=columns)
+    return df
 
-# === UI ===
+# === Streamlit UI ===
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
 st.title("Отчет по заявкам ЦДС водопровод")
 st.subheader("2025 год - РВК")
 
-# Выбор периода
 selected = st.selectbox(
     "Выберите период",
     options=list(DISPLAY_NAMES.keys()),
@@ -77,22 +86,18 @@ selected = st.selectbox(
     index=0
 )
 
-# Загрузка данных
+# Загрузка и обработка данных
 try:
     df = load_data(selected)
 except Exception as e:
-    st.error(f"Не удалось загрузить данные из листа '{SHEET_NAMES[selected]}': {str(e)}")
+    st.error(f"Ошибка при загрузке листа '{SHEET_NAMES[selected]}': {e}")
     st.stop()
 
-# Проверка структуры
-required = ["organization", "total", "closed", "open", "cancelled"]
-if not all(col in df.columns for col in required):
-    st.error(f"Таблица должна содержать колонки: {', '.join(required)}")
-    st.stop()
-
-# Приведение к числу
-for col in required[1:]:
-    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+# Преобразуем числовые поля
+numeric_cols = ["total", "closed", "open", "cancelled", "erroneous"]
+for col in numeric_cols:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
 # Статистика
 total = df["total"].sum()
@@ -107,14 +112,13 @@ col2.metric("Закрытых", closed, delta="100%" if total == closed and tota
 col3.metric("Открытых", open_, delta="Требуют внимания" if open_ > 0 else None)
 col4.metric("Отменённых", cancelled)
 
-# Фильтр активных
+# Активные организации
 active = df[df["total"] > 0].copy()
 
 # Графики
 if not active.empty:
     g1, g2 = st.columns(2)
-
-    # Круговая диаграмма
+    
     with g1:
         fig1 = px.pie(
             active,
@@ -124,8 +128,7 @@ if not active.empty:
         )
         fig1.update_traces(textposition="inside", textinfo="percent+label")
         st.plotly_chart(fig1, use_container_width=True)
-
-    # Столбчатая диаграмма
+    
     with g2:
         active["org_label"] = active["organization"].apply(
             lambda x: x[:15] + "..." if len(x) > 15 else x
@@ -140,10 +143,10 @@ if not active.empty:
         )
         st.plotly_chart(fig2, use_container_width=True)
 else:
-    st.info("Нет данных для отображения.")
+    st.info("Нет организаций с заявками.")
 
 # Таблица
 st.subheader("Детальная информация")
 st.dataframe(df, use_container_width=True)
 
-st.caption(f"Обновлено: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+st.caption(f"Данные обновлены: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
