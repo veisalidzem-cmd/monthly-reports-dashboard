@@ -158,6 +158,5 @@ display_df = df.rename(columns={
     "erroneous": "Ошибочно"
 })
 st.dataframe(display_df, use_container_width=True)
-st.dataframe(df, use_container_width=True)
 
 st.caption(f"Данные обновлены: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
