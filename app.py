@@ -158,7 +158,7 @@ SHEET_NAMES = {
 }
 
 # === Подключение к Google Sheets ===
-@st_cache_resource
+@st.cache_resource
 def get_client():
     try:
         info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
