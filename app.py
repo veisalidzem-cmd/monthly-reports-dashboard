@@ -159,4 +159,10 @@ display_df = df.rename(columns={
 })
 st.dataframe(display_df, use_container_width=True)
 
-st.caption(f"Данные обновлены: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+from datetime import datetime, timezone
+import pytz
+
+# Часовой пояс Астаны / Алматы (UTC+5)
+astana_tz = pytz.timezone("Asia/Almaty")
+current_time = datetime.now(astana_tz).strftime('%d.%m.%Y %H:%M')
+st.caption(f"Данные обновлены: {current_time}")
