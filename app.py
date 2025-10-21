@@ -10,10 +10,12 @@ import pytz
 # ⬇️ Первая команда Streamlit
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
 
-# === Скрываем панель инструментов Plotly и делаем графики статичными ===
+# === Скрываем только кнопки zoom (+/-), оставляя остальные ===
 st.markdown("""
 <style>
-    .plotly-graph-div .modebar {
+    /* Скрываем плюсик и минус в панели инструментов */
+    .plotly-graph-div .modebar-btn[data-title="Zoom in"],
+    .plotly-graph-div .modebar-btn[data-title="Zoom out"] {
         display: none !important;
     }
 </style>
@@ -163,12 +165,12 @@ SHEET_NAMES = {
 }
 
 DISPLAY_NAMES = {
-    "jan": "Янв", "feb": "Фев", "mar": "Мар", "apr": "Апр", "may": "Май",
-    "jun": "Июн", "jul": "Июл", "aug": "Авг", "sep": "Сен", "oct": "Окт",
-    "nov": "Ноя", "dec": "Дек", "year": "Год"
+    "jan": "Январь", "feb": "Февраль", "mar": "Март", "apr": "Апрель", "may": "Май",
+    "jun": "Июнь", "jul": "Июль", "aug": "Август", "sep": "Сентябрь", "oct": "Октябрь",
+    "nov": "Ноябрь", "dec": "Декабрь", "year": "Год"
 }
 
-# === Кнопки месяцев (адаптивные) ===
+# === Кнопки месяцев ===
 st.markdown("#### Период:")
 months = list(DISPLAY_NAMES.items())
 for i in range(0, len(months), 4):
@@ -246,7 +248,7 @@ with col2: st.metric("✅ Закрыто", closed)
 with col3: st.metric("⚠️ Открыто", open_)
 with col4: st.metric("❌ Отменено", cancelled)
 
-# === Графики (статичные, без интерактивности) ===
+# === Графики (с подсказками, без zoom, с кнопками скачать/полный экран) ===
 active = df[df["total"] > 0].copy()
 if not active.empty:
     active["org_label"] = active["organization"].apply(lambda x: x[:12] + "..." if len(x) > 12 else x)
@@ -269,10 +271,10 @@ if not active.empty:
             font_size=11
         )
         st.plotly_chart(fig1, use_container_width=True, config={
-            "staticPlot": True,
-            "displayModeBar": False,
+            "displayModeBar": True,
+            "displaylogo": False,
             "scrollZoom": False,
-            "displaylogo": False
+            "doubleClick": "reset"
         })
     
     with g2:
@@ -302,10 +304,10 @@ if not active.empty:
         )
         fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{series}: %{y}<extra></extra>")
         st.plotly_chart(fig2, use_container_width=True, config={
-            "staticPlot": True,
-            "displayModeBar": False,
+            "displayModeBar": True,
+            "displaylogo": False,
             "scrollZoom": False,
-            "displaylogo": False
+            "doubleClick": "reset"
         })
 
 # === Таблица ===
