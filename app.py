@@ -7,15 +7,44 @@ from google.oauth2.service_account import Credentials
 import json
 import pytz
 
-# ⬇️ Первая команда
+# ⬇️ Первая команда Streamlit
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
+
+# === Настройки темы и цветов ===
+with st.sidebar:
+    st.markdown("### 🎨 Оформление")
+    theme = st.radio("Тема", ["Светлая", "Тёмная"], index=0, horizontal=True)
+    st.markdown("### 🖨️ Печать")
+    st.info("Для печати: Ctrl+P → «Сохранить как PDF»")
+
+# Цветовая палитра
+COLORS = {
+    "primary": "#0d9488",
+    "secondary": "#0ea5e9",
+    "warning": "#f59e0b",
+    "danger": "#ef4444",
+    "light_bg": "#ffffff",
+    "dark_bg": "#0f172a",
+    "light_text": "#1e293b",
+    "dark_text": "#f1f5f9"
+}
+
+# Определяем bg и text ДО использования в CSS
+if theme == "Тёмная":
+    bg = COLORS["dark_bg"]
+    text = COLORS["dark_text"]
+else:
+    bg = COLORS["light_bg"]  # белый фон для печати и светлой темы
+    text = COLORS["light_text"]
+
+# === CSS: адаптивный + печать + мобильный ===
 st.markdown(f"""
 <style>
     .main {{ background-color: {bg}; color: {text}; padding: 10px !important; }}
     .stApp {{ background-color: {bg}; }}
 
-    h1 {{ font-size: 1.8rem; margin-bottom: 0.4em; }}
-    h2 {{ font-size: 1.4rem; margin-top: 1.2em; margin-bottom: 0.6em; }}
+    h1 {{ font-size: 1.8rem; margin-bottom: 0.4em; font-weight: 700; }}
+    h2 {{ font-size: 1.4rem; margin-top: 1.2em; margin-bottom: 0.6em; font-weight: 600; }}
 
     /* Кнопки — удобные для касания */
     .stButton > button {{
@@ -25,111 +54,23 @@ st.markdown(f"""
         padding: 0 12px !important;
         white-space: nowrap !important;
         border-radius: 8px !important;
+        width: 100% !important;
     }}
 
     @media (max-width: 480px) {{
         .stButton > button {{
-            font-size: 0.9rem !important;
-            height: 44px !important;
+            font-size: 0.95rem !important;
+            height: 46px !important;
         }}
         h1 {{ font-size: 1.6rem !important; }}
         h2 {{ font-size: 1.3rem !important; }}
     }}
 
+    /* Метрики */
     [data-testid="stMetricLabel"] {{ font-size: 0.9rem !important; }}
     [data-testid="stMetricValue"] {{ font-size: 1.4rem !important; }}
 
-    .plotly-graph-div {{
-        border-radius: 8px !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
-        margin-bottom: 12px !important;
-    }}
-
-    .dataframe {{
-        font-size: 0.95rem;
-        border-radius: 6px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-        margin-bottom: 16px;
-    }}
-    .dataframe th, .dataframe td {{
-        padding: 8px 10px !important;
-    }}
-
-    @media print {{
-        .sidebar, .stSidebar, [data-testid="stSidebar"],
-        .stButton, .stRadio, .stCheckbox {{
-            display: none !important;
-        }}
-        .main {{ padding: 0 !important; }}
-        .plotly-graph-div {{ box-shadow: none !important; }}
-        body {{
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }}
-    }}
-</style>
-""", unsafe_allow_html=True)
-# === Тема и печать ===
-with st.sidebar:
-    st.markdown("### 🎨 Оформление")
-    theme = st.radio("Тема", ["Светлая", "Тёмная"], index=0, horizontal=True)
-    st.markdown("### 🖨️ Печать")
-    st.info("Для печати: Ctrl+P → «Сохранить как PDF»")
-
-# === Исправленные имена листов ===
-SHEET_NAMES = {
-    "jan": "jan",
-    "feb": "feb",
-    "mar": "mar",
-    "apr": "apr",
-    "may": "may",
-    "jun": "june",    # ← исправлено
-    "jul": "jule",    # ← исправлено
-    "aug": "aug",
-    "sep": "sept",    # ← исправлено
-    "oct": "oct",
-    "nov": "nov",
-    "dec": "dec",
-    "year": "gen"
-}
-
-DISPLAY_NAMES = {
-    "jan": "Январь", "feb": "Фев", "mar": "Мар", "apr": "Апр", "may": "Май",
-    "jun": "Июн", "jul": "Июл", "aug": "Авг", "sep": "Сен", "oct": "Окт",
-    "nov": "Ноя", "dec": "Дек", "year": "Год"
-}
-
-MONTH_KEYS = list(DISPLAY_NAMES.keys())
-
-COLORS = {
-    "primary": "#0d9488",
-    "secondary": "#0ea5e9",
-    "warning": "#f59e0b",
-    "danger": "#ef4444",
-    "light_bg": "#ffffff",  # ← белый фон для печати
-    "dark_bg": "#f8fafc",
-    "light_text": "#1e293b",
-    "dark_text": "#1e293b"
-}
-
-# === CSS: компактный + печать ===
-bg = COLORS["light_bg"]  # всегда белый для печати
-text = COLORS["light_text"]
-
-st.markdown(f"""
-<style>
-    .main {{ background-color: {bg}; color: {text}; padding: 10px !important; }}
-    .stApp {{ background-color: {bg}; }}
-
-    /* Заголовки — компактные */
-    h1 {{ font-size: 1.8rem; margin-bottom: 0.4em; }}
-    h2 {{ font-size: 1.4rem; margin-top: 1.2em; margin-bottom: 0.6em; }}
-
-    /* Метрики — компактные */
-    [data-testid="stMetricLabel"] {{ font-size: 0.9rem !important; }}
-    [data-testid="stMetricValue"] {{ font-size: 1.4rem !important; }}
-
-    /* Графики — меньше отступы */
+    /* Графики */
     .plotly-graph-div {{
         border-radius: 8px !important;
         box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
@@ -147,24 +88,14 @@ st.markdown(f"""
         padding: 8px 10px !important;
     }}
 
-    /* Кнопки месяцев — компактные */
-    .stButton > button {{
-        padding: 6px 10px !important;
-        font-size: 0.85rem !important;
-    }}
-
-    /* Скрыть сайдбар и кнопки при печати */
+    /* Печать */
     @media print {{
         .sidebar, .stSidebar, [data-testid="stSidebar"],
         .stButton, .stRadio, .stCheckbox {{
             display: none !important;
         }}
-        .main {{
-            padding: 0 !important;
-        }}
-        .plotly-graph-div {{
-            box-shadow: none !important;
-        }}
+        .main {{ padding: 0 !important; }}
+        .plotly-graph-div {{ box-shadow: none !important; }}
         body {{
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -177,23 +108,51 @@ st.markdown(f"""
 st.title("💧 Отчет по заявкам ЦДС водопровод")
 st.subheader("2025 год – РВК")
 
-# === Кнопки месяцев (в 2 строки для компактности) ===
-row1 = MONTH_KEYS[:7]
-row2 = MONTH_KEYS[7:]
+# === Конфигурация листов ===
+SHEET_NAMES = {
+    "jan": "jan",
+    "feb": "feb",
+    "mar": "mar",
+    "apr": "apr",
+    "may": "may",
+    "jun": "june",    # исправлено
+    "jul": "jule",    # исправлено
+    "aug": "aug",
+    "sep": "sept",    # исправлено
+    "oct": "oct",
+    "nov": "nov",
+    "dec": "dec",
+    "year": "gen"
+}
 
+DISPLAY_NAMES = {
+    "jan": "Янв", "feb": "Фев", "mar": "Мар", "apr": "Апр", "may": "Май",
+    "jun": "Июн", "jul": "Июл", "aug": "Авг", "sep": "Сен", "oct": "Окт",
+    "nov": "Ноя", "dec": "Дек", "year": "Год"
+}
+
+MONTH_KEYS = list(DISPLAY_NAMES.keys())
+
+# === Адаптивные кнопки месяцев ===
 st.markdown("#### Период:")
-cols1 = st.columns(len(row1))
-for i, key in enumerate(row1):
-    with cols1[i]:
-        if st.button(DISPLAY_NAMES[key], key=f"btn_{key}"):
-            st.session_state.selected = key
 
-cols2 = st.columns(len(row2))
-for i, key in enumerate(row2):
-    with cols2[i]:
-        if st.button(DISPLAY_NAMES[key], key=f"btn2_{key}"):
-            st.session_state.selected = key
+# Группируем по 4 кнопки в строку
+buttons_per_row = 4
+months = list(DISPLAY_NAMES.items())
 
+for i in range(0, len(months), buttons_per_row):
+    row = months[i:i + buttons_per_row]
+    cols = st.columns(len(row))
+    for j, (key, name) in enumerate(row):
+        with cols[j]:
+            if st.button(
+                name,
+                key=f"btn_{key}",
+                use_container_width=True
+            ):
+                st.session_state.selected = key
+
+# По умолчанию — январь
 selected = st.session_state.get("selected", "jan")
 
 # === Подключение к Google Sheets ===
@@ -222,8 +181,13 @@ def load_data(period_key):
     client = get_client()
     sheet_name = SHEET_NAMES[period_key]
     worksheet = client.open_by_key("1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k").worksheet(sheet_name)
-    values = worksheet.get("A4:F13")
+    try:
+        values = worksheet.get("A4:F13")
+    except Exception:
+        values = []
     columns = ["organization", "total", "closed", "open", "cancelled", "erroneous"]
+    if not values:
+        return pd.DataFrame(columns=columns)
     cleaned = [row for row in values if row and str(row[0]).strip()]
     normalized = []
     for row in cleaned:
@@ -232,7 +196,7 @@ def load_data(period_key):
         normalized.append(row[:len(columns)])
     return pd.DataFrame(normalized, columns=columns)
 
-# === Загрузка данных ===
+# === Загрузка и обработка данных ===
 try:
     df = load_data(selected)
 except Exception as e:
@@ -262,16 +226,52 @@ if not active.empty:
     
     g1, g2 = st.columns(2)
     with g1:
-        fig1 = px.pie(active, values="total", names="organization", hole=0.4)
-        fig1.update_traces(textposition="inside", textinfo="percent+label", hovertemplate="<b>%{label}</b><br>Заявок: %{value}<extra></extra>")
-        fig1.update_layout(title="По организациям", title_x=0.5, showlegend=False, margin=dict(t=40, b=10, l=10, r=10), font_size=11)
+        fig1 = px.pie(
+            active,
+            values="total",
+            names="organization",
+            hole=0.4,
+            color_discrete_sequence=px.colors.qualitative.Pastel
+        )
+        fig1.update_traces(
+            textposition="inside",
+            textinfo="percent+label",
+            hovertemplate="<b>%{label}</b><br>Заявок: %{value}<extra></extra>"
+        )
+        fig1.update_layout(
+            title="По организациям",
+            title_x=0.5,
+            showlegend=False,
+            margin=dict(t=40, b=10, l=10, r=10),
+            font_size=11
+        )
         st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
     
     with g2:
-        active_disp = active.rename(columns={"closed": "Закрыто", "open": "Открыто", "cancelled": "Отменено"})
-        fig2 = px.bar(active_disp, x="org_label", y=["Закрыто", "Открыто", "Отменено"], barmode="stack",
-                      color_discrete_map={"Закрыто": COLORS["primary"], "Открыто": COLORS["warning"], "Отменено": COLORS["danger"]})
-        fig2.update_layout(title="Статус заявок", title_x=0.5, xaxis_tickangle=-45, margin=dict(t=40, b=80, l=30, r=10), font_size=10, showlegend=False)
+        active_disp = active.rename(columns={
+            "closed": "Закрыто",
+            "open": "Открыто",
+            "cancelled": "Отменено"
+        })
+        fig2 = px.bar(
+            active_disp,
+            x="org_label",
+            y=["Закрыто", "Открыто", "Отменено"],
+            barmode="stack",
+            color_discrete_map={
+                "Закрыто": COLORS["primary"],
+                "Открыто": COLORS["warning"],
+                "Отменено": COLORS["danger"]
+            }
+        )
+        fig2.update_layout(
+            title="Статус заявок",
+            title_x=0.5,
+            xaxis_tickangle=-45,
+            margin=dict(t=40, b=80, l=30, r=10),
+            font_size=10,
+            showlegend=False
+        )
         fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{series}: %{y}<extra></extra>")
         st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
 
@@ -287,7 +287,7 @@ display_df = df.rename(columns={
 st.subheader("Детальная информация")
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-# === Подпись ===
+# === Подпись с временем Астаны ===
 astana_tz = pytz.timezone("Asia/Almaty")
 current_time = datetime.now(astana_tz).strftime('%d.%m.%Y %H:%M')
 st.caption(f"Данные обновлены: {current_time} (Астана)")
