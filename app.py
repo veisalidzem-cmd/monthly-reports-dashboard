@@ -16,19 +16,19 @@ with st.sidebar:
     theme = st.radio("Тема", ["Светлая", "Тёмная"], index=0, horizontal=True)
     show_totals = st.checkbox("Показать ИТОГО", value=True)
 
-# === Цветовая палитра (водная тематика) ===
+# === Цветовая палитра ===
 COLORS = {
-    "primary": "#0d9488",      # бирюзовый — основной (успех)
-    "secondary": "#0ea5e9",    # ярко-голубой — акцент
-    "warning": "#f59e0b",      # янтарный — внимание
-    "danger": "#ef4444",       # красный — ошибка
+    "primary": "#0d9488",
+    "secondary": "#0ea5e9",
+    "warning": "#f59e0b",
+    "danger": "#ef4444",
     "light_bg": "#f8fafc",
     "dark_bg": "#0f172a",
     "light_text": "#1e293b",
     "dark_text": "#f1f5f9"
 }
 
-# === CSS под тему ===
+# === CSS с улучшениями: шрифты, тени, скругления, адаптивность ===
 if theme == "Тёмная":
     bg = COLORS["dark_bg"]
     text = COLORS["dark_text"]
@@ -37,6 +37,8 @@ if theme == "Тёмная":
     table_header = "#1e293b"
     table_cell = "#1e293b"
     table_text = "#e2e8f0"
+    shadow = "0 4px 12px rgba(0,0,0,0.4)"
+    hover_shadow = "0 6px 16px rgba(0,0,0,0.5)"
 else:
     bg = COLORS["light_bg"]
     text = COLORS["light_text"]
@@ -45,38 +47,82 @@ else:
     table_header = "#e2e8f0"
     table_cell = "white"
     table_text = "#334155"
+    shadow = "0 4px 12px rgba(0,0,0,0.08)"
+    hover_shadow = "0 6px 16px rgba(0,0,0,0.12)"
 
 st.markdown(f"""
 <style>
     .main {{ background-color: {bg}; color: {text}; }}
     .stApp {{ background-color: {bg}; }}
-    h1, h2, h3 {{ color: {text} !important; }}
-    [data-testid="stMetricLabel"] {{ color: {metric_label} !important; }}
-    [data-testid="stMetricValue"] {{ color: {metric_value} !important; }}
+
+    /* Заголовки — крупнее и адаптивны */
+    h1 {{
+        color: {text} !important;
+        font-weight: 700;
+        font-size: 2.4rem;
+        margin-bottom: 0.3em;
+    }}
+    h2 {{
+        color: {text} !important;
+        font-weight: 600;
+        font-size: 1.8rem;
+        margin-top: 1.5em;
+    }}
+    @media (min-width: 1200px) {{
+        h1 {{ font-size: 2.8rem; }}
+        h2 {{ font-size: 2.0rem; }}
+    }}
+
+    /* Метрики */
+    [data-testid="stMetricLabel"] {{ color: {metric_label} !important; font-size: 1.1rem !important; }}
+    [data-testid="stMetricValue"] {{ color: {metric_value} !important; font-size: 2.0rem !important; }}
+
+    /* Таблица */
     .dataframe {{
-        font-size: 0.95rem;
-        border-radius: 8px;
+        font-size: 1.05rem;
+        border-radius: 12px;
         overflow: hidden;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        box-shadow: {shadow};
+        transition: box-shadow 0.3s ease;
+        width: 100% !important;
+        margin-bottom: 1.5rem;
+    }}
+    .dataframe:hover {{
+        box-shadow: {hover_shadow};
     }}
     .dataframe th {{
         background-color: {table_header} !important;
         color: {text} !important;
         font-weight: 600;
+        padding: 12px 16px;
     }}
     .dataframe td {{
         background-color: {table_cell} !important;
         color: {table_text} !important;
+        padding: 12px 16px;
     }}
+
+    /* Графики — в контейнерах со скруглением и тенью */
+    .plotly-graph-div {{
+        border-radius: 12px !important;
+        box-shadow: {shadow} !important;
+        transition: box-shadow 0.3s ease !important;
+    }}
+    .plotly-graph-div:hover {{
+        box-shadow: {hover_shadow} !important;
+    }}
+
+    /* Выбор периода */
     .stSelectbox > div > div {{
         border: 1px solid #cbd5e1;
         border-radius: 8px;
-        padding: 4px 8px;
+        padding: 6px 10px;
+        font-size: 1.1rem;
     }}
 </style>
 """, unsafe_allow_html=True)
 
-# === Заголовок с эмодзи ===
+# === Заголовок ===
 st.title("💧 Отчет по заявкам ЦДС водопровод")
 st.subheader("2025 год - РВК")
 
@@ -195,7 +241,8 @@ if not active.empty:
         fig1.update_layout(
             title_x=0.5,
             showlegend=False,
-            margin=dict(t=50, b=20, l=20, r=20)
+            margin=dict(t=50, b=20, l=20, r=20),
+            font=dict(size=14)
         )
         st.plotly_chart(fig1, use_container_width=True)
     
@@ -222,13 +269,14 @@ if not active.empty:
             title_x=0.5,
             xaxis_tickangle=-45,
             margin=dict(t=50, b=100, l=40, r=20),
-            legend_title_text="Статус"
+            legend_title_text="Статус",
+            font=dict(size=13)
         )
         st.plotly_chart(fig2, use_container_width=True)
 else:
     st.info("Нет организаций с заявками.")
 
-# === Таблица с ИТОГО ===
+# === Таблица и ИТОГО отдельно ===
 display_df = df.rename(columns={
     "organization": "Организация",
     "total": "Всего",
@@ -238,19 +286,25 @@ display_df = df.rename(columns={
     "erroneous": "Ошибочно"
 })
 
+st.subheader("Детальная информация")
+st.dataframe(display_df, use_container_width=True)
+
+# === ИТОГО под таблицей ===
 if show_totals and len(display_df) > 0:
-    total_row = pd.DataFrame([{
+    total_row = {
         "Организация": "ИТОГО",
         "Всего": display_df["Всего"].sum(),
         "Закрыто": display_df["Закрыто"].sum(),
         "Открыто": display_df["Открыто"].sum(),
         "Отменено": display_df["Отменено"].sum(),
         "Ошибочно": display_df["Ошибочно"].sum()
-    }])
-    display_df = pd.concat([display_df, total_row], ignore_index=True)
-
-st.subheader("Детальная информация")
-st.dataframe(display_df, use_container_width=True)
+    }
+    st.markdown("### 📌 Итоги")
+    cols = st.columns(6)
+    labels = ["Организация", "Всего", "Закрыто", "Открыто", "Отменено", "Ошибочно"]
+    for i, label in enumerate(labels):
+        with cols[i]:
+            st.metric(label, total_row[label])
 
 # === Время в Астане ===
 astana_tz = pytz.timezone("Asia/Almaty")
