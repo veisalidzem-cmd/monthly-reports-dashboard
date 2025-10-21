@@ -14,7 +14,6 @@ st.set_page_config(page_title="Отчет по заявкам ЦДС водоп�
 with st.sidebar:
     st.markdown("### 🎨 Оформление")
     theme = st.radio("Тема", ["Светлая", "Тёмная"], index=0, horizontal=True)
-    show_totals = st.checkbox("Показать ИТОГО", value=True)
 
 # === Цветовая палитра ===
 COLORS = {
@@ -112,12 +111,28 @@ st.markdown(f"""
         box-shadow: {hover_shadow} !important;
     }}
 
-    /* Выбор периода */
-    .stSelectbox > div > div {{
-        border: 1px solid #cbd5e1;
+    /* Кнопки месяца */
+    .month-btn {{
+        display: inline-block;
+        padding: 8px 16px;
+        margin: 4px;
         border-radius: 8px;
-        padding: 6px 10px;
-        font-size: 1.1rem;
+        border: 1px solid #cbd5e1;
+        background-color: white;
+        color: #1e293b;
+        text-align: center;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }}
+    .month-btn:hover {{
+        background-color: #e2e8f0;
+        transform: translateY(-1px);
+    }}
+    .month-btn.selected {{
+        background-color: #0d9488;
+        color: white;
+        border-color: #0d9488;
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -129,20 +144,21 @@ st.subheader("2025 год - РВК")
 # === Конфигурация ===
 SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
 
-SHEET_NAMES = {
-    "jan": "jan", "feb": "feb", "mar": "mar", "apr": "apr", "may": "may",
-    "jun": "jun", "jul": "jul", "aug": "aug", "sep": "sep", "oct": "oct",
-    "nov": "nov", "dec": "dec", "year": "gen"
-}
-
+MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "year"]
 DISPLAY_NAMES = {
     "jan": "Янв", "feb": "Фев", "mar": "Мар", "apr": "Апр", "may": "Май",
     "jun": "Июн", "jul": "Июл", "aug": "Авг", "sep": "Сен", "oct": "Окт",
     "nov": "Ноя", "dec": "Дек", "year": "Год"
 }
 
+SHEET_NAMES = {
+    "jan": "jan", "feb": "feb", "mar": "mar", "apr": "apr", "may": "may",
+    "jun": "jun", "jul": "jul", "aug": "aug", "sep": "sep", "oct": "oct",
+    "nov": "nov", "dec": "dec", "year": "gen"
+}
+
 # === Подключение к Google Sheets ===
-@st.cache_resource
+@st_cache_resource
 def get_client():
     try:
         info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
@@ -183,19 +199,24 @@ def load_data(period_key: str) -> pd.DataFrame:
         normalized.append(row[:len(columns)])
     return pd.DataFrame(normalized, columns=columns)
 
-# === Выбор периода ===
-selected = st.selectbox(
-    "Выберите период",
-    options=list(DISPLAY_NAMES.keys()),
-    format_func=lambda x: DISPLAY_NAMES[x],
-    index=0
-)
+# === Кнопки вместо выпадающего списка ===
+st.markdown("### Выберите период:")
+cols = st.columns(len(MONTH_KEYS))
+selected_month = None
+for i, key in enumerate(MONTH_KEYS):
+    with cols[i]:
+        if st.button(DISPLAY_NAMES[key], key=key):
+            selected_month = key
+
+# Если не выбрано — берем первый месяц
+if selected_month is None:
+    selected_month = MONTH_KEYS[0]
 
 # === Загрузка данных ===
 try:
-    df = load_data(selected)
+    df = load_data(selected_month)
 except Exception as e:
-    st.error(f"Ошибка при загрузке листа '{SHEET_NAMES[selected]}': {e}")
+    st.error(f"Ошибка при загрузке листа '{SHEET_NAMES[selected_month]}': {e}")
     st.stop()
 
 # === Преобразование чисел ===
@@ -244,6 +265,8 @@ if not active.empty:
             margin=dict(t=50, b=20, l=20, r=20),
             font=dict(size=14)
         )
+        # Чистим подсказки: только название и значение
+        fig1.update_traces(hovertemplate="<b>%{label}</b><br>Заявок: %{value}<extra></extra>")
         st.plotly_chart(fig1, use_container_width=True)
     
     with g2:
@@ -272,11 +295,13 @@ if not active.empty:
             legend_title_text="Статус",
             font=dict(size=13)
         )
+        # Чистим подсказки
+        fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{series}: %{y}<extra></extra>")
         st.plotly_chart(fig2, use_container_width=True)
 else:
     st.info("Нет организаций с заявками.")
 
-# === Таблица и ИТОГО отдельно ===
+# === Таблица ===
 display_df = df.rename(columns={
     "organization": "Организация",
     "total": "Всего",
@@ -288,23 +313,6 @@ display_df = df.rename(columns={
 
 st.subheader("Детальная информация")
 st.dataframe(display_df, use_container_width=True)
-
-# === ИТОГО под таблицей ===
-if show_totals and len(display_df) > 0:
-    total_row = {
-        "Организация": "ИТОГО",
-        "Всего": display_df["Всего"].sum(),
-        "Закрыто": display_df["Закрыто"].sum(),
-        "Открыто": display_df["Открыто"].sum(),
-        "Отменено": display_df["Отменено"].sum(),
-        "Ошибочно": display_df["Ошибочно"].sum()
-    }
-    st.markdown("### 📌 Итоги")
-    cols = st.columns(6)
-    labels = ["Организация", "Всего", "Закрыто", "Открыто", "Отменено", "Ошибочно"]
-    for i, label in enumerate(labels):
-        with cols[i]:
-            st.metric(label, total_row[label])
 
 # === Время в Астане ===
 astana_tz = pytz.timezone("Asia/Almaty")
