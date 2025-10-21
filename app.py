@@ -7,6 +7,8 @@ from google.oauth2.service_account import Credentials
 import json
 import pytz
 
+st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
+
 # === Кастомные стили ===
 st.markdown("""
 <style>
