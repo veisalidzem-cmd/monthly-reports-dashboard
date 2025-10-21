@@ -236,17 +236,33 @@ numeric_cols = ["total", "closed", "open", "cancelled", "erroneous"]
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
-# === Статистика ===
+# === Статистика с подсказками ===
 total = df["total"].sum()
 closed = df["closed"].sum()
 open_ = df["open"].sum()
 cancelled = df["cancelled"].sum()
 
 col1, col2, col3, col4 = st.columns(4)
-with col1: st.metric("📄 Всего", total)
-with col2: st.metric("✅ Закрыто", closed)
-with col3: st.metric("⚠️ Открыто", open_)
-with col4: st.metric("❌ Отменено", cancelled)
+with col1:
+    st.metric("📄 Всего", total)
+with col2:
+    st.metric(
+        "✅ Закрыто",
+        closed,
+        delta="100% выполнение" if total > 0 and closed == total else None
+    )
+with col3:
+    st.metric(
+        "⚠️ Открыто",
+        open_,
+        delta="Требуют внимания" if open_ > 0 else None
+    )
+with col4:
+    st.metric(
+        "❌ Отменено",
+        cancelled,
+        delta="Ошибочно или отменено" if cancelled > 0 else None
+    )
 
 # === Графики (с подсказками, без zoom, с кнопками скачать/полный экран) ===
 active = df[df["total"] > 0].copy()
