@@ -7,155 +7,135 @@ from google.oauth2.service_account import Credentials
 import json
 import pytz
 
-# ⬇️ ОБЯЗАТЕЛЬНО ПЕРВАЯ КОМАНДА
+# ⬇️ Первая команда
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
 
-# === Тема: переключатель в сайдбаре ===
+# === Тема и печать ===
 with st.sidebar:
     st.markdown("### 🎨 Оформление")
     theme = st.radio("Тема", ["Светлая", "Тёмная"], index=0, horizontal=True)
+    st.markdown("### 🖨️ Печать")
+    st.info("Для печати: Ctrl+P → «Сохранить как PDF»")
 
-# === Цветовая палитра ===
+# === Исправленные имена листов ===
+SHEET_NAMES = {
+    "jan": "jan",
+    "feb": "feb",
+    "mar": "mar",
+    "apr": "apr",
+    "may": "may",
+    "jun": "june",    # ← исправлено
+    "jul": "jule",    # ← исправлено
+    "aug": "aug",
+    "sep": "sept",    # ← исправлено
+    "oct": "oct",
+    "nov": "nov",
+    "dec": "dec",
+    "year": "gen"
+}
+
+DISPLAY_NAMES = {
+    "jan": "Январь", "feb": "Фев", "mar": "Мар", "apr": "Апр", "may": "Май",
+    "jun": "Июн", "jul": "Июл", "aug": "Авг", "sep": "Сен", "oct": "Окт",
+    "nov": "Ноя", "dec": "Дек", "year": "Год"
+}
+
+MONTH_KEYS = list(DISPLAY_NAMES.keys())
+
 COLORS = {
     "primary": "#0d9488",
     "secondary": "#0ea5e9",
     "warning": "#f59e0b",
     "danger": "#ef4444",
-    "light_bg": "#f8fafc",
-    "dark_bg": "#0f172a",
+    "light_bg": "#ffffff",  # ← белый фон для печати
+    "dark_bg": "#f8fafc",
     "light_text": "#1e293b",
-    "dark_text": "#f1f5f9"
+    "dark_text": "#1e293b"
 }
 
-# === CSS с улучшениями: шрифты, тени, скругления, адаптивность ===
-if theme == "Тёмная":
-    bg = COLORS["dark_bg"]
-    text = COLORS["dark_text"]
-    metric_label = "#cbd5e1"
-    metric_value = COLORS["dark_text"]
-    table_header = "#1e293b"
-    table_cell = "#1e293b"
-    table_text = "#e2e8f0"
-    shadow = "0 4px 12px rgba(0,0,0,0.4)"
-    hover_shadow = "0 6px 16px rgba(0,0,0,0.5)"
-else:
-    bg = COLORS["light_bg"]
-    text = COLORS["light_text"]
-    metric_label = "#475569"
-    metric_value = COLORS["light_text"]
-    table_header = "#e2e8f0"
-    table_cell = "white"
-    table_text = "#334155"
-    shadow = "0 4px 12px rgba(0,0,0,0.08)"
-    hover_shadow = "0 6px 16px rgba(0,0,0,0.12)"
+# === CSS: компактный + печать ===
+bg = COLORS["light_bg"]  # всегда белый для печати
+text = COLORS["light_text"]
 
 st.markdown(f"""
 <style>
-    .main {{ background-color: {bg}; color: {text}; }}
+    .main {{ background-color: {bg}; color: {text}; padding: 10px !important; }}
     .stApp {{ background-color: {bg}; }}
 
-    /* Заголовки — крупнее и адаптивны */
-    h1 {{
-        color: {text} !important;
-        font-weight: 700;
-        font-size: 2.4rem;
-        margin-bottom: 0.3em;
-    }}
-    h2 {{
-        color: {text} !important;
-        font-weight: 600;
-        font-size: 1.8rem;
-        margin-top: 1.5em;
-    }}
-    @media (min-width: 1200px) {{
-        h1 {{ font-size: 2.8rem; }}
-        h2 {{ font-size: 2.0rem; }}
-    }}
+    /* Заголовки — компактные */
+    h1 {{ font-size: 1.8rem; margin-bottom: 0.4em; }}
+    h2 {{ font-size: 1.4rem; margin-top: 1.2em; margin-bottom: 0.6em; }}
 
-    /* Метрики */
-    [data-testid="stMetricLabel"] {{ color: {metric_label} !important; font-size: 1.1rem !important; }}
-    [data-testid="stMetricValue"] {{ color: {metric_value} !important; font-size: 2.0rem !important; }}
+    /* Метрики — компактные */
+    [data-testid="stMetricLabel"] {{ font-size: 0.9rem !important; }}
+    [data-testid="stMetricValue"] {{ font-size: 1.4rem !important; }}
+
+    /* Графики — меньше отступы */
+    .plotly-graph-div {{
+        border-radius: 8px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
+        margin-bottom: 12px !important;
+    }}
 
     /* Таблица */
     .dataframe {{
-        font-size: 1.05rem;
-        border-radius: 12px;
-        overflow: hidden;
-        box-shadow: {shadow};
-        transition: box-shadow 0.3s ease;
-        width: 100% !important;
-        margin-bottom: 1.5rem;
+        font-size: 0.95rem;
+        border-radius: 6px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        margin-bottom: 16px;
     }}
-    .dataframe:hover {{
-        box-shadow: {hover_shadow};
-    }}
-    .dataframe th {{
-        background-color: {table_header} !important;
-        color: {text} !important;
-        font-weight: 600;
-        padding: 12px 16px;
-    }}
-    .dataframe td {{
-        background-color: {table_cell} !important;
-        color: {table_text} !important;
-        padding: 12px 16px;
+    .dataframe th, .dataframe td {{
+        padding: 8px 10px !important;
     }}
 
-    /* Графики — в контейнерах со скруглением и тенью */
-    .plotly-graph-div {{
-        border-radius: 12px !important;
-        box-shadow: {shadow} !important;
-        transition: box-shadow 0.3s ease !important;
-    }}
-    .plotly-graph-div:hover {{
-        box-shadow: {hover_shadow} !important;
+    /* Кнопки месяцев — компактные */
+    .stButton > button {{
+        padding: 6px 10px !important;
+        font-size: 0.85rem !important;
     }}
 
-    /* Кнопки месяца */
-    .month-btn {{
-        display: inline-block;
-        padding: 8px 16px;
-        margin: 4px;
-        border-radius: 8px;
-        border: 1px solid #cbd5e1;
-        background-color: white;
-        color: #1e293b;
-        text-align: center;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }}
-    .month-btn:hover {{
-        background-color: #e2e8f0;
-        transform: translateY(-1px);
-    }}
-    .month-btn.selected {{
-        background-color: #0d9488;
-        color: white;
-        border-color: #0d9488;
+    /* Скрыть сайдбар и кнопки при печати */
+    @media print {{
+        .sidebar, .stSidebar, [data-testid="stSidebar"],
+        .stButton, .stRadio, .stCheckbox {{
+            display: none !important;
+        }}
+        .main {{
+            padding: 0 !important;
+        }}
+        .plotly-graph-div {{
+            box-shadow: none !important;
+        }}
+        body {{
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }}
     }}
 </style>
 """, unsafe_allow_html=True)
 
 # === Заголовок ===
 st.title("💧 Отчет по заявкам ЦДС водопровод")
-st.subheader("2025 год - РВК")
+st.subheader("2025 год – РВК")
 
-# === Конфигурация ===
-SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
+# === Кнопки месяцев (в 2 строки для компактности) ===
+row1 = MONTH_KEYS[:7]
+row2 = MONTH_KEYS[7:]
 
-MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "year"]
-DISPLAY_NAMES = {
-    "jan": "Январь", "feb": "Февраль", "mar": "Март", "apr": "Апрель", "may": "Май",
-    "jun": "Июнь", "jul": "Июль", "aug": "Август", "sep": "Сентябрь", "oct": "Октябрь",
-    "nov": "Ноябрь", "dec": "Декабрь", "year": "Год"
-}
+st.markdown("#### Период:")
+cols1 = st.columns(len(row1))
+for i, key in enumerate(row1):
+    with cols1[i]:
+        if st.button(DISPLAY_NAMES[key], key=f"btn_{key}"):
+            st.session_state.selected = key
 
-SHEET_NAMES = {
-    "jan": "jan", "feb": "feb", "mar": "mar", "apr": "apr", "may": "may",
-    "jun": "june", "jul": "jule", "aug": "aug", "sep": "sept", "oct": "oct",
-    "nov": "nov", "dec": "dec", "year": "gen"
-}
+cols2 = st.columns(len(row2))
+for i, key in enumerate(row2):
+    with cols2[i]:
+        if st.button(DISPLAY_NAMES[key], key=f"btn2_{key}"):
+            st.session_state.selected = key
+
+selected = st.session_state.get("selected", "jan")
 
 # === Подключение к Google Sheets ===
 @st.cache_resource
@@ -179,18 +159,12 @@ def get_client():
         )
     return gspread.authorize(creds)
 
-def load_data(period_key: str) -> pd.DataFrame:
+def load_data(period_key):
     client = get_client()
     sheet_name = SHEET_NAMES[period_key]
-    worksheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
-    range_name = "A4:F13"
-    try:
-        values = worksheet.get(range_name)
-    except Exception:
-        values = []
+    worksheet = client.open_by_key("1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k").worksheet(sheet_name)
+    values = worksheet.get("A4:F13")
     columns = ["organization", "total", "closed", "open", "cancelled", "erroneous"]
-    if not values:
-        return pd.DataFrame(columns=columns)
     cleaned = [row for row in values if row and str(row[0]).strip()]
     normalized = []
     for row in cleaned:
@@ -199,34 +173,16 @@ def load_data(period_key: str) -> pd.DataFrame:
         normalized.append(row[:len(columns)])
     return pd.DataFrame(normalized, columns=columns)
 
-# === Кнопки вместо выпадающего списка ===
-st.markdown("### Выберите период:")
-cols = st.columns(len(MONTH_KEYS))
-selected_month = None
-for i, key in enumerate(MONTH_KEYS):
-    with cols[i]:
-        if st.button(DISPLAY_NAMES[key], key=key):
-            selected_month = key
-
-# Если не выбрано — берем первый месяц
-if selected_month is None:
-    selected_month = MONTH_KEYS[0]
-
 # === Загрузка данных ===
 try:
-    df = load_data(selected_month)
+    df = load_data(selected)
 except Exception as e:
-    st.error(f"Ошибка при загрузке листа '{SHEET_NAMES[selected_month]}': {e}")
+    st.error(f"Ошибка загрузки листа '{SHEET_NAMES[selected]}': {e}")
     st.stop()
 
-# === Преобразование чисел ===
 numeric_cols = ["total", "closed", "open", "cancelled", "erroneous"]
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
-
-# === Подготовка для графиков ===
-active = df[df["total"] > 0].copy()
-active["org_label"] = active["organization"].apply(lambda x: x[:15] + "..." if len(x) > 15 else x)
 
 # === Статистика ===
 total = df["total"].sum()
@@ -234,72 +190,31 @@ closed = df["closed"].sum()
 open_ = df["open"].sum()
 cancelled = df["cancelled"].sum()
 
-# === Карточки ===
 col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("📄 Всего заявок", total)
-with col2:
-    st.metric("✅ Закрытых", closed, delta="100%" if total == closed and total > 0 else None)
-with col3:
-    st.metric("⚠️ Открытых", open_, delta="Требуют внимания" if open_ > 0 else None)
-with col4:
-    st.metric("❌ Отменённых", cancelled)
+with col1: st.metric("📄 Всего", total)
+with col2: st.metric("✅ Закрыто", closed)
+with col3: st.metric("⚠️ Открыто", open_)
+with col4: st.metric("❌ Отменено", cancelled)
 
 # === Графики ===
+active = df[df["total"] > 0].copy()
 if not active.empty:
-    g1, g2 = st.columns(2)
+    active["org_label"] = active["organization"].apply(lambda x: x[:12] + "..." if len(x) > 12 else x)
     
+    g1, g2 = st.columns(2)
     with g1:
-        fig1 = px.pie(
-            active,
-            values="total",
-            names="organization",
-            title="Распределение по организациям",
-            hole=0.4,
-            color_discrete_sequence=px.colors.qualitative.Pastel
-        )
-        fig1.update_traces(textposition="inside", textinfo="percent+label")
-        fig1.update_layout(
-            title_x=0.5,
-            showlegend=False,
-            margin=dict(t=50, b=20, l=20, r=20),
-            font=dict(size=14)
-        )
-        # Чистим подсказки: только название и значение
-        fig1.update_traces(hovertemplate="<b>%{label}</b><br>Заявок: %{value}<extra></extra>")
-        st.plotly_chart(fig1, use_container_width=True)
+        fig1 = px.pie(active, values="total", names="organization", hole=0.4)
+        fig1.update_traces(textposition="inside", textinfo="percent+label", hovertemplate="<b>%{label}</b><br>Заявок: %{value}<extra></extra>")
+        fig1.update_layout(title="По организациям", title_x=0.5, showlegend=False, margin=dict(t=40, b=10, l=10, r=10), font_size=11)
+        st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
     
     with g2:
-        active_display = active.rename(columns={
-            "closed": "Закрыто",
-            "open": "Открыто",
-            "cancelled": "Отменено"
-        })
-        fig2 = px.bar(
-            active_display,
-            x="org_label",
-            y=["Закрыто", "Открыто", "Отменено"],
-            title="Статус заявок",
-            labels={"value": "Количество", "org_label": "Организация"},
-            barmode="stack",
-            color_discrete_map={
-                "Закрыто": COLORS["primary"],
-                "Открыто": COLORS["warning"],
-                "Отменено": COLORS["danger"]
-            }
-        )
-        fig2.update_layout(
-            title_x=0.5,
-            xaxis_tickangle=-45,
-            margin=dict(t=50, b=100, l=40, r=20),
-            legend_title_text="Статус",
-            font=dict(size=13)
-        )
-        # Чистим подсказки
+        active_disp = active.rename(columns={"closed": "Закрыто", "open": "Открыто", "cancelled": "Отменено"})
+        fig2 = px.bar(active_disp, x="org_label", y=["Закрыто", "Открыто", "Отменено"], barmode="stack",
+                      color_discrete_map={"Закрыто": COLORS["primary"], "Открыто": COLORS["warning"], "Отменено": COLORS["danger"]})
+        fig2.update_layout(title="Статус заявок", title_x=0.5, xaxis_tickangle=-45, margin=dict(t=40, b=80, l=30, r=10), font_size=10, showlegend=False)
         fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{series}: %{y}<extra></extra>")
-        st.plotly_chart(fig2, use_container_width=True)
-else:
-    st.info("Нет организаций с заявками.")
+        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
 
 # === Таблица ===
 display_df = df.rename(columns={
@@ -310,11 +225,10 @@ display_df = df.rename(columns={
     "cancelled": "Отменено",
     "erroneous": "Ошибочно"
 })
-
 st.subheader("Детальная информация")
-st.dataframe(display_df, use_container_width=True)
+st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-# === Время в Астане ===
+# === Подпись ===
 astana_tz = pytz.timezone("Asia/Almaty")
 current_time = datetime.now(astana_tz).strftime('%d.%m.%Y %H:%M')
-st.caption(f"Данные обновлены: {current_time}")
+st.caption(f"Данные обновлены: {current_time} (Астана)")
