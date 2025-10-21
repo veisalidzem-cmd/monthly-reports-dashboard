@@ -10,7 +10,16 @@ import pytz
 # ⬇️ Первая команда Streamlit
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
 
-# === Автоматическая тема + кнопка переключения ===
+# === Скрываем панель инструментов Plotly и делаем графики статичными ===
+st.markdown("""
+<style>
+    .plotly-graph-div .modebar {
+        display: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# === Автоматическая тема по ширине экрана ===
 st.markdown("""
 <script>
     const isMobile = window.innerWidth < 768;
@@ -96,7 +105,6 @@ st.markdown("""
         background: #f1f5f9;
     }
 
-    /* Печать — уменьшаем размеры */
     @media print {
         #theme-toggle { display: none !important; }
         body {
@@ -107,8 +115,8 @@ st.markdown("""
             padding: 0 !important;
             font-size: 0.9rem !important;
         }
-        h1 { font-size: 1.4rem !important; margin-bottom: 0.3em; }
-        h2 { font-size: 1.2rem !important; margin-top: 1em; margin-bottom: 0.5em; }
+        h1 { font-size: 1.4rem !important; }
+        h2 { font-size: 1.2rem !important; }
         [data-testid="stMetricValue"] { font-size: 1.2rem !important; }
         .dataframe {
             font-size: 0.85rem !important;
@@ -120,7 +128,6 @@ st.markdown("""
         .plotly-graph-div {
             margin-bottom: 10px !important;
         }
-        /* Принудительно масштабируем на 85% для A4 */
         @page {
             size: A4 portrait;
             margin: 1cm;
@@ -145,10 +152,10 @@ SHEET_NAMES = {
     "mar": "mar",
     "apr": "apr",
     "may": "may",
-    "jun": "june",
-    "jul": "jule",
+    "jun": "june",    # исправлено
+    "jul": "jule",    # исправлено
     "aug": "aug",
-    "sep": "sept",
+    "sep": "sept",    # исправлено
     "oct": "oct",
     "nov": "nov",
     "dec": "dec",
@@ -161,24 +168,15 @@ DISPLAY_NAMES = {
     "nov": "Ноя", "dec": "Дек", "year": "Год"
 }
 
-MONTH_KEYS = list(DISPLAY_NAMES.keys())
-
-# === Адаптивные кнопки месяцев ===
+# === Кнопки месяцев (адаптивные) ===
 st.markdown("#### Период:")
-
-buttons_per_row = 4
 months = list(DISPLAY_NAMES.items())
-
-for i in range(0, len(months), buttons_per_row):
-    row = months[i:i + buttons_per_row]
+for i in range(0, len(months), 4):
+    row = months[i:i+4]
     cols = st.columns(len(row))
     for j, (key, name) in enumerate(row):
         with cols[j]:
-            if st.button(
-                name,
-                key=f"btn_{key}",
-                use_container_width=True
-            ):
+            if st.button(name, key=f"btn_{key}", use_container_width=True):
                 st.session_state.selected = key
 
 selected = st.session_state.get("selected", "jan")
@@ -231,6 +229,7 @@ except Exception as e:
     st.error(f"Ошибка загрузки листа '{SHEET_NAMES[selected]}': {e}")
     st.stop()
 
+# === Преобразование чисел ===
 numeric_cols = ["total", "closed", "open", "cancelled", "erroneous"]
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
@@ -247,7 +246,7 @@ with col2: st.metric("✅ Закрыто", closed)
 with col3: st.metric("⚠️ Открыто", open_)
 with col4: st.metric("❌ Отменено", cancelled)
 
-# === Графики ===
+# === Графики (статичные, без интерактивности) ===
 active = df[df["total"] > 0].copy()
 if not active.empty:
     active["org_label"] = active["organization"].apply(lambda x: x[:12] + "..." if len(x) > 12 else x)
@@ -261,11 +260,7 @@ if not active.empty:
             hole=0.4,
             color_discrete_sequence=px.colors.qualitative.Pastel
         )
-        fig1.update_traces(
-            textposition="inside",
-            textinfo="percent+label",
-            hovertemplate="<b>%{label}</b><br>Заявок: %{value}<extra></extra>"
-        )
+        fig1.update_traces(hovertemplate="<b>%{label}</b><br>Заявок: %{value}<extra></extra>")
         fig1.update_layout(
             title="По организациям",
             title_x=0.5,
@@ -273,7 +268,12 @@ if not active.empty:
             margin=dict(t=40, b=10, l=10, r=10),
             font_size=11
         )
-        st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig1, use_container_width=True, config={
+            "staticPlot": True,
+            "displayModeBar": False,
+            "scrollZoom": False,
+            "displaylogo": False
+        })
     
     with g2:
         active_disp = active.rename(columns={
@@ -301,7 +301,12 @@ if not active.empty:
             showlegend=False
         )
         fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{series}: %{y}<extra></extra>")
-        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig2, use_container_width=True, config={
+            "staticPlot": True,
+            "displayModeBar": False,
+            "scrollZoom": False,
+            "displaylogo": False
+        })
 
 # === Таблица ===
 display_df = df.rename(columns={
@@ -315,7 +320,7 @@ display_df = df.rename(columns={
 st.subheader("Детальная информация")
 st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-# === Подпись ===
+# === Время Астаны ===
 astana_tz = pytz.timezone("Asia/Almaty")
 current_time = datetime.now(astana_tz).strftime('%d.%m.%Y %H:%M')
 st.caption(f"Данные обновлены: {current_time} (Астана)")
