@@ -13,9 +13,7 @@ st.set_page_config(page_title="Отчет по заявкам ЦДС водоп�
 # === Скрываем только кнопки zoom (+/-), оставляя остальные ===
 st.markdown("""
 <style>
-    /* Скрываем плюсик и минус в панели инструментов */
-    .plotly-graph-div .modebar-btn[data-title="Zoom in"],
-    .plotly-graph-div .modebar-btn[data-title="Zoom out"] {
+    .plotly-graph-div .modebar {
         display: none !important;
     }
 </style>
@@ -264,7 +262,7 @@ with col4:
         delta="Ошибочно или отменено" if cancelled > 0 else None
     )
 
-# === Графики (с подсказками, без zoom, с кнопками скачать/полный экран) ===
+# === Графики (без панели инструментов, с подсказками) ===
 active = df[df["total"] > 0].copy()
 if not active.empty:
     active["org_label"] = active["organization"].apply(lambda x: x[:12] + "..." if len(x) > 12 else x)
@@ -286,12 +284,7 @@ if not active.empty:
             margin=dict(t=40, b=10, l=10, r=10),
             font_size=11
         )
-        st.plotly_chart(fig1, use_container_width=True, config={
-            "displayModeBar": True,
-            "displaylogo": False,
-            "scrollZoom": False,
-            "doubleClick": "reset"
-        })
+        st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
     
     with g2:
         active_disp = active.rename(columns={
@@ -319,12 +312,7 @@ if not active.empty:
             showlegend=False
         )
         fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{series}: %{y}<extra></extra>")
-        st.plotly_chart(fig2, use_container_width=True, config={
-            "displayModeBar": True,
-            "displaylogo": False,
-            "scrollZoom": False,
-            "doubleClick": "reset"
-        })
+        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
 
 # === Таблица ===
 display_df = df.rename(columns={
