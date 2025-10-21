@@ -9,7 +9,66 @@ import pytz
 
 # ⬇️ Первая команда
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
+st.markdown(f"""
+<style>
+    .main {{ background-color: {bg}; color: {text}; padding: 10px !important; }}
+    .stApp {{ background-color: {bg}; }}
 
+    h1 {{ font-size: 1.8rem; margin-bottom: 0.4em; }}
+    h2 {{ font-size: 1.4rem; margin-top: 1.2em; margin-bottom: 0.6em; }}
+
+    /* Кнопки — удобные для касания */
+    .stButton > button {{
+        height: 48px !important;
+        font-size: 1rem !important;
+        font-weight: 500 !important;
+        padding: 0 12px !important;
+        white-space: nowrap !important;
+        border-radius: 8px !important;
+    }}
+
+    @media (max-width: 480px) {{
+        .stButton > button {{
+            font-size: 0.9rem !important;
+            height: 44px !important;
+        }}
+        h1 {{ font-size: 1.6rem !important; }}
+        h2 {{ font-size: 1.3rem !important; }}
+    }}
+
+    [data-testid="stMetricLabel"] {{ font-size: 0.9rem !important; }}
+    [data-testid="stMetricValue"] {{ font-size: 1.4rem !important; }}
+
+    .plotly-graph-div {{
+        border-radius: 8px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
+        margin-bottom: 12px !important;
+    }}
+
+    .dataframe {{
+        font-size: 0.95rem;
+        border-radius: 6px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        margin-bottom: 16px;
+    }}
+    .dataframe th, .dataframe td {{
+        padding: 8px 10px !important;
+    }}
+
+    @media print {{
+        .sidebar, .stSidebar, [data-testid="stSidebar"],
+        .stButton, .stRadio, .stCheckbox {{
+            display: none !important;
+        }}
+        .main {{ padding: 0 !important; }}
+        .plotly-graph-div {{ box-shadow: none !important; }}
+        body {{
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }}
+    }}
+</style>
+""", unsafe_allow_html=True)
 # === Тема и печать ===
 with st.sidebar:
     st.markdown("### 🎨 Оформление")
