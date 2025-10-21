@@ -1,160 +1,149 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
+from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
+import json
 
-GOOGLE_SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
-SHEETS = ["jan", "feb", "mar", "apr", "may", "june", "jule", "aug", "sept", "oct", "nov", "dec", "gen"]
+# === Конфигурация ===
+SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
 
-@st.cache_data(ttl=300)
-def load_sheet(sheet_name):
-    url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
+# Сопоставление: ключ выбора → имя листа в Google Sheets
+SHEET_NAMES = {
+    "jan": "jan",
+    "feb": "feb",
+    "mar": "mar",
+    "apr": "apr",
+    "may": "may",
+    "jun": "jun",
+    "jul": "jul",
+    "aug": "aug",
+    "sep": "sep",
+    "oct": "oct",
+    "nov": "nov",
+    "dec": "dec",
+    "year": "gen",  # ← годовой отчёт на листе "gen"
+}
+
+# Отображаемые названия месяцев
+DISPLAY_NAMES = {
+    "jan": "Янв", "feb": "Фев", "mar": "Мар", "apr": "Апр", "may": "Май",
+    "jun": "Июн", "jul": "Июл", "aug": "Авг", "sep": "Сен", "oct": "Окт",
+    "nov": "Ноя", "dec": "Дек", "year": "Год"
+}
+
+# === Подключение к Google Sheets ===
+@st.cache_resource
+def get_client():
     try:
-        df = pd.read_csv(url, header=None)
-        return df
-    except Exception as e:
-        st.error(f"Ошибка загрузки листа '{sheet_name}': {e}")
-        return pd.DataFrame()
+        # Для Streamlit Cloud
+        info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+        creds = Credentials.from_service_account_info(
+            info,
+            scopes=[
+                "https://spreadsheets.google.com/feeds",
+                "https://www.googleapis.com/auth/drive"
+            ]
+        )
+    except KeyError:
+        # Для локального запуска (credentials.json в корне)
+        creds = Credentials.from_service_account_file(
+            "credentials.json",
+            scopes=[
+                "https://spreadsheets.google.com/feeds",
+                "https://www.googleapis.com/auth/drive"
+            ]
+        )
+    return gspread.authorize(creds)
 
-# === СТИЛЬ ===
-st.markdown("""
-<style>
-    .block-container { max-width: 1200px; padding-top: 2rem; }
-    h1 { font-size: 2.2rem; font-weight: 700; color: #3B82F6; margin-bottom: 0.5rem; }
-    .period { font-size: 1.1rem; color: #6B7280; margin-bottom: 1.5rem; }
-    .metric-card { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); height: 100%; }
-    .metric-title { font-size: 0.85rem; color: #6B7280; }
-    .metric-value { font-size: 1.8rem; font-weight: 600; color: #111827; margin: 0.5rem 0; }
-    .metric-subtitle { font-size: 0.75rem; color: #3B82F6; }
-</style>
-""", unsafe_allow_html=True)
+def load_data(period_key: str) -> pd.DataFrame:
+    client = get_client()
+    sheet_name = SHEET_NAMES[period_key]
+    sheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
+    records = sheet.get_all_records()
+    return pd.DataFrame(records)
 
+# === UI ===
+st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
 st.title("Отчет по заявкам ЦДС водопровод")
-st.markdown('<div class="period">2025 год - РВК</div>', unsafe_allow_html=True)
+st.subheader("2025 год - РВК")
 
-tabs = st.tabs([
-    "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
-    "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек", "Год"
-])
+# Выбор периода
+selected = st.selectbox(
+    "Выберите период",
+    options=list(DISPLAY_NAMES.keys()),
+    format_func=lambda x: DISPLAY_NAMES[x],
+    index=0
+)
 
-for i, tab in enumerate(tabs):
-    with tab:
-        sheet_name = SHEETS[i]
-        df = load_sheet(sheet_name)
+# Загрузка данных
+try:
+    df = load_data(selected)
+except Exception as e:
+    st.error(f"Не удалось загрузить данные из листа '{SHEET_NAMES[selected]}': {str(e)}")
+    st.stop()
 
-        if df.empty or len(df) < 14:
-            st.info("Нет данных.")
-            continue
+# Проверка структуры
+required = ["organization", "total", "closed", "open", "cancelled"]
+if not all(col in df.columns for col in required):
+    st.error(f"Таблица должна содержать колонки: {', '.join(required)}")
+    st.stop()
 
-        # === ПЕРИОД ИЗ СТРОКИ 2 ===
-        period_text = "Период не указан"
-        row2 = df.iloc[1].astype(str).str.strip()
-        for cell in row2:
-            if "01." in cell and "-" in cell and len(cell) > 10:
-                period_text = f"Период {cell}"
-                break
-        st.markdown(f'<div class="period">{period_text}</div>', unsafe_allow_html=True)
+# Приведение к числу
+for col in required[1:]:
+    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
-        # === МЕТРИКИ ИЗ СТРОКИ 14 ===
-        total_row = df.iloc[13]
-        if len(total_row) < 6:
-            st.warning("Недостаточно данных в строке итогов.")
-            continue
+# Статистика
+total = df["total"].sum()
+closed = df["closed"].sum()
+open_ = df["open"].sum()
+cancelled = df["cancelled"].sum()
 
-        total = 0
-        closed = 0
-        open_ = 0
-        canceled = 0
+# Карточки
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Всего заявок", total)
+col2.metric("Закрытых", closed, delta="100%" if total == closed and total > 0 else None)
+col3.metric("Открытых", open_, delta="Требуют внимания" if open_ > 0 else None)
+col4.metric("Отменённых", cancelled)
 
-        try:
-            total = int(float(str(total_row[1]).replace(",", ".")))
-        except:
-            pass
-        try:
-            closed = int(float(str(total_row[2]).replace(",", ".")))
-        except:
-            pass
-        try:
-            open_ = int(float(str(total_row[3]).replace(",", ".")))
-        except:
-            pass
-        try:
-            canceled = int(float(str(total_row[4]).replace(",", ".")))
-        except:
-            pass
+# Фильтр активных
+active = df[df["total"] > 0].copy()
 
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">Всего заявок</div>
-                <div class="metric-value">{total}</div>
-                <div class="metric-subtitle">За отчетный период</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">Закрытых заявок</div>
-                <div class="metric-value">{closed}</div>
-                <div class="metric-subtitle">100% выполнение</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">Открытых заявок</div>
-                <div class="metric-value">{open_}</div>
-                <div class="metric-subtitle">Требуют внимания</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col4:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">Отмененных заявок</div>
-                <div class="metric-value">{canceled}</div>
-                <div class="metric-subtitle">Отменено или ошибочно</div>
-            </div>
-            """, unsafe_allow_html=True)
+# Графики
+if not active.empty:
+    g1, g2 = st.columns(2)
 
-        # === ДАННЫЕ ДЛЯ ГРАФИКОВ: СТРОКИ 4–13 ===
-        data_rows = df.iloc[3:13].copy()
-        if len(data_rows.columns) < 6:
-            st.info("Недостаточно колонок для графиков.")
-            continue
+    # Круговая диаграмма
+    with g1:
+        fig1 = px.pie(
+            active,
+            values="total",
+            names="organization",
+            title="Распределение по организациям"
+        )
+        fig1.update_traces(textposition="inside", textinfo="percent+label")
+        st.plotly_chart(fig1, use_container_width=True)
 
-        data_rows.columns = ["РВК", "Всего", "Кол.закрытых ГИС", "Кол.Открытых ГИС", "Кол.отмененных ГИС", "Кол.ошибочных ГИС"]
+    # Столбчатая диаграмма
+    with g2:
+        active["org_label"] = active["organization"].apply(
+            lambda x: x[:15] + "..." if len(x) > 15 else x
+        )
+        fig2 = px.bar(
+            active,
+            x="org_label",
+            y=["closed", "open", "cancelled"],
+            title="Статус заявок",
+            labels={"value": "Кол-во", "org_label": "Организация"},
+            barmode="stack"
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+else:
+    st.info("Нет данных для отображения.")
 
-        # Убираем строки, где РВК пустой или содержит "сумма"
-        data_for_charts = data_rows.dropna(subset=["РВК"])
-        data_for_charts = data_for_charts[data_for_charts["РВК"].astype(str).str.strip() != ""]
-        data_for_charts = data_for_charts[~data_for_charts["РВК"].astype(str).str.contains("сумма", case=False, na=False)]
+# Таблица
+st.subheader("Детальная информация")
+st.dataframe(df, use_container_width=True)
 
-        if data_for_charts.empty:
-            st.info("Нет данных для визуализации.")
-            continue
-
-        # --- Пирог ---
-        pie_data = data_for_charts[["РВК", "Всего"]].copy()
-        pie_data["Всего"] = pd.to_numeric(pie_data["Всего"], errors="coerce").fillna(0)
-        pie_data = pie_data[pie_data["Всего"] > 0]
-
-        if not pie_data.empty:
-            st.subheader("Распределение заявок по организациям")
-            fig_pie = px.pie(pie_data, names="РВК", values="Всего", hole=0.4)
-            fig_pie.update_traces(textinfo='percent+label')
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-        # --- Столбчатая диаграмма ---
-        bar_data = data_for_charts[["РВК", "Всего", "Кол.закрытых ГИС"]].copy()
-        bar_data["Всего"] = pd.to_numeric(bar_data["Всего"], errors="coerce").fillna(0)
-        bar_data["Кол.закрытых ГИС"] = pd.to_numeric(bar_data["Кол.закрытых ГИС"], errors="coerce").fillna(0)
-        bar_data = bar_data[(bar_data["Всего"] > 0) | (bar_data["Кол.закрытых ГИС"] > 0)]
-
-        if not bar_data.empty:
-            st.subheader("Сравнение заявок по организациям")
-            fig_bar = go.Figure()
-            fig_bar.add_trace(go.Bar(x=bar_data["РВК"], y=bar_data["Всего"], name="Всего заявок", marker_color="#3B82F6"))
-            fig_bar.add_trace(go.Bar(x=bar_data["РВК"], y=bar_data["Кол.закрытых ГИС"], name="Закрытых", marker_color="#93C5FD"))
-            fig_bar.update_layout(barmode='group', xaxis_tickangle=-45, plot_bgcolor="white", paper_bgcolor="white")
-            st.plotly_chart(fig_bar, use_container_width=True)
+st.caption(f"Обновлено: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
