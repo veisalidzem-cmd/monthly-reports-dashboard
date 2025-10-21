@@ -5,6 +5,53 @@ from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 import json
+import pytz
+
+# === Кастомные стили ===
+st.markdown("""
+<style>
+    .main { background-color: #f8fafc; }
+    .stApp { background-color: #f8fafc; }
+    h1 {
+        color: #0f172a;
+        font-weight: 700;
+        margin-bottom: 0.3em;
+    }
+    h2 {
+        color: #1e293b;
+        font-weight: 600;
+        margin-top: 1.5em;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.8rem !important;
+        font-weight: 700;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 1rem !important;
+        color: #475569;
+    }
+    .dataframe {
+        font-size: 0.95rem;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+    .dataframe th {
+        background-color: #e2e8f0 !important;
+        color: #1e293b !important;
+        font-weight: 600;
+    }
+    .dataframe td {
+        background-color: white !important;
+        color: #334155 !important;
+    }
+    .stSelectbox > div > div {
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 4px 8px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # === Конфигурация ===
 SHEET_ID = "1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k"
@@ -25,7 +72,6 @@ DISPLAY_NAMES = {
 @st.cache_resource
 def get_client():
     try:
-        # Streamlit Cloud
         info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
         creds = Credentials.from_service_account_info(
             info,
@@ -35,7 +81,6 @@ def get_client():
             ]
         )
     except KeyError:
-        # Локально
         creds = Credentials.from_service_account_file(
             "credentials.json",
             scopes=[
@@ -50,13 +95,10 @@ def load_data(period_key: str) -> pd.DataFrame:
     sheet_name = SHEET_NAMES[period_key]
     worksheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
     
-    # Читаем ТОЛЬКО диапазон A4:F13 (10 строк данных)
-    # Если у тебя в будущем будет больше/меньше строк — подправь
     range_name = "A4:F13"
     try:
         values = worksheet.get(range_name)
-    except Exception as e:
-        # Если диапазон пуст или ошибка — возвращаем пустой DF
+    except Exception:
         values = []
     
     columns = ["organization", "total", "closed", "open", "cancelled", "erroneous"]
@@ -64,10 +106,7 @@ def load_data(period_key: str) -> pd.DataFrame:
     if not values:
         return pd.DataFrame(columns=columns)
     
-    # Очистка: убираем строки, где первая ячейка пустая
     cleaned = [row for row in values if row and str(row[0]).strip()]
-    
-    # Дополняем до 6 колонок, если нужно
     normalized = []
     for row in cleaned:
         while len(row) < len(columns):
@@ -76,8 +115,9 @@ def load_data(period_key: str) -> pd.DataFrame:
     
     return pd.DataFrame(normalized, columns=columns)
 
-# === Streamlit UI ===
+# === UI ===
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
+
 st.title("Отчет по заявкам ЦДС водопровод")
 st.subheader("2025 год - РВК")
 
@@ -88,18 +128,21 @@ selected = st.selectbox(
     index=0
 )
 
-# Загрузка и обработка данных
+# Загрузка данных
 try:
     df = load_data(selected)
 except Exception as e:
     st.error(f"Ошибка при загрузке листа '{SHEET_NAMES[selected]}': {e}")
     st.stop()
 
-# Преобразуем числовые поля
+# Преобразование в числа
 numeric_cols = ["total", "closed", "open", "cancelled", "erroneous"]
 for col in numeric_cols:
-    if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+
+# Подготовка для графиков
+active = df[df["total"] > 0].copy()
+active["org_label"] = active["organization"].apply(lambda x: x[:15] + "..." if len(x) > 15 else x)
 
 # Статистика
 total = df["total"].sum()
@@ -107,15 +150,16 @@ closed = df["closed"].sum()
 open_ = df["open"].sum()
 cancelled = df["cancelled"].sum()
 
-# Карточки
+# Карточки с эмодзи
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Всего заявок", total)
-col2.metric("Закрытых", closed, delta="100%" if total == closed and total > 0 else None)
-col3.metric("Открытых", open_, delta="Требуют внимания" if open_ > 0 else None)
-col4.metric("Отменённых", cancelled)
-
-# Активные организации
-active = df[df["total"] > 0].copy()
+with col1:
+    st.metric("📄 Всего заявок", total)
+with col2:
+    st.metric("✅ Закрытых", closed, delta="100%" if total == closed and total > 0 else None)
+with col3:
+    st.metric("⚠️ Открытых", open_, delta="Требуют внимания" if open_ > 0 else None)
+with col4:
+    st.metric("❌ Отменённых", cancelled)
 
 # Графики
 if not active.empty:
@@ -126,29 +170,48 @@ if not active.empty:
             active,
             values="total",
             names="organization",
-            title="Распределение по организациям"
+            title="Распределение по организациям",
+            hole=0.4,
+            color_discrete_sequence=px.colors.qualitative.Pastel
         )
         fig1.update_traces(textposition="inside", textinfo="percent+label")
+        fig1.update_layout(
+            title_x=0.5,
+            showlegend=False,
+            margin=dict(t=50, b=20, l=20, r=20)
+        )
         st.plotly_chart(fig1, use_container_width=True)
     
     with g2:
-        active["org_label"] = active["organization"].apply(
-            lambda x: x[:15] + "..." if len(x) > 15 else x
-        )
+        active_display = active.rename(columns={
+            "closed": "Закрыто",
+            "open": "Открыто",
+            "cancelled": "Отменено"
+        })
         fig2 = px.bar(
-            active,
+            active_display,
             x="org_label",
-            y=["closed", "open", "cancelled"],
+            y=["Закрыто", "Открыто", "Отменено"],
             title="Статус заявок",
-            labels={"value": "Кол-во", "org_label": "Организация"},
-            barmode="stack"
+            labels={"value": "Количество", "org_label": "Организация"},
+            barmode="stack",
+            color_discrete_map={
+                "Закрыто": "#4ade80",
+                "Открыто": "#fbbf24",
+                "Отменено": "#f87171"
+            }
+        )
+        fig2.update_layout(
+            title_x=0.5,
+            xaxis_tickangle=-45,
+            margin=dict(t=50, b=100, l=40, r=20),
+            legend_title_text="Статус"
         )
         st.plotly_chart(fig2, use_container_width=True)
 else:
     st.info("Нет организаций с заявками.")
 
-# Таблица
-st.subheader("Детальная информация")
+# Таблица с русскими заголовками
 display_df = df.rename(columns={
     "organization": "Организация",
     "total": "Всего",
@@ -157,12 +220,10 @@ display_df = df.rename(columns={
     "cancelled": "Отменено",
     "erroneous": "Ошибочно"
 })
+st.subheader("Детальная информация")
 st.dataframe(display_df, use_container_width=True)
 
-from datetime import datetime, timezone
-import pytz
-
-# Часовой пояс Астаны / Алматы (UTC+5)
+# Время в Астане
 astana_tz = pytz.timezone("Asia/Almaty")
 current_time = datetime.now(astana_tz).strftime('%d.%m.%Y %H:%M')
 st.caption(f"Данные обновлены: {current_time}")
