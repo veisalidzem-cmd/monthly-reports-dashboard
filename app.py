@@ -38,6 +38,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import json
 import pytz
+import time
 
 # ⬇️ Первая команда Streamlit
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
@@ -235,14 +236,25 @@ def get_client():
         )
     return gspread.authorize(creds)
 
-def load_data(period_key):
+def load_data(period_key: str) -> pd.DataFrame:
     client = get_client()
     sheet_name = SHEET_NAMES[period_key]
-    worksheet = client.open_by_key("1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k").worksheet(sheet_name)
-    try:
-        values = worksheet.get("A4:F13")
-    except Exception:
-        values = []
+    
+    # Повтор при ошибке 500
+    for attempt in range(3):
+        try:
+            worksheet = client.open_by_key("1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k").worksheet(sheet_name)
+            values = worksheet.get("A4:F13")
+            break
+        except gspread.exceptions.APIError as e:
+            if e.response.status_code == 500 and attempt < 2:
+                time.sleep(1.5 ** attempt)  # экспоненциальная задержка
+                continue
+            else:
+                raise
+        except Exception:
+            raise
+
     columns = ["organization", "total", "closed", "open", "cancelled", "erroneous"]
     if not values:
         return pd.DataFrame(columns=columns)
