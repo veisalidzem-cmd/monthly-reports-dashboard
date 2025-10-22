@@ -1,4 +1,12 @@
 import streamlit as st
+import pandas as pd
+import plotly.express as px
+from datetime import datetime
+import gspread
+from google.oauth2.service_account import Credentials
+import json
+import pytz
+import time
 
 # === АУТЕНТИФИКАЦИЯ ===
 def check_password():
@@ -18,125 +26,134 @@ def check_password():
                     st.rerun()
                 else:
                     st.error("❌ Неверный логин или пароль")
-    
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
-
     if not st.session_state.authenticated:
         login_form()
         st.stop()
 
 check_password()
 
-# === ОСНОВНОЙ КОД ===
-import pandas as pd
-import plotly.express as px
-from datetime import datetime
-import gspread
-from google.oauth2.service_account import Credentials
-import json
-import pytz
-import time
-
+# === НАСТРОЙКА СТРАНИЦЫ ===
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
 
-# === СТИЛЬ: ЧИТАЕМЫЙ, ПРОФЕССИОНАЛЬНЫЙ ===
-st.markdown(""" 
+# === СТИЛИ ===
+st.markdown("""
 <style>
-:root{
-  --accent:#0ea5e9;
-  --muted:#6b7280;
-  --card-bg: #ffffff;
-  --surface:#f8fafc;
+:root {
   --primary:#1e3a8a;
+  --accent:#0284c7;
   --success:#10b981;
-  --shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  --muted:#6b7280;
+  --surface:#f8fafc;
+  --card:#ffffff;
+  --shadow:0 4px 10px rgba(0,0,0,0.05);
 }
-.main { background-color: var(--surface); padding: 28px 36px !important; }
-.dash-title { display:flex; gap:12px; align-items:center; margin-bottom:6px; }
-.dash-title h1{ font-size:28px; margin:0; color:var(--primary); font-weight:800; }
-.dash-title .subtitle{ color:var(--muted); font-size:14px; margin-top:4px; }
-
-/* metric cards row */
-.metrics-row { display:flex; gap:18px; margin-top:18px; margin-bottom:20px; flex-wrap:wrap; }
-.metric-card { background: var(--card-bg); border-radius:12px; padding:18px; width:100%; box-shadow: var(--shadow); border: 1px solid rgba(15,23,42,0.03); text-align:left; }
-@media (min-width: 900px){ .metric-card { width: 24%; } }
-.metric-label { color:var(--muted); font-size:13px; margin-bottom:6px; }
-.metric-value { font-size:26px; font-weight:800; color: #0f172a; }
-.metric-delta { font-size:12px; color:var(--success); margin-top:6px; }
-
-/* cards container for charts */
-.card { background:var(--card-bg); padding:18px; border-radius:12px; box-shadow: var(--shadow); border: 1px solid rgba(15,23,42,0.03); }
-.card-title { font-weight:700; color:#0f172a; margin-bottom:8px; font-size:15px; }
-.card-sub { color:var(--muted); font-size:12px; margin-bottom:12px; }
-
-/* table header */
-.detail-title { margin-top:18px; font-size:18px; font-weight:700; color:#0f172a; margin-bottom:10px; }
-
-.small-muted { color:var(--muted); font-size:12px; }
+.main {
+  background-color:var(--surface);
+  padding:20px 30px !important;
+}
+h1 {
+  font-size:2rem;
+  font-weight:800;
+  color:var(--primary);
+  margin-bottom:0.3em;
+}
+h2 {
+  font-size:1.3rem;
+  font-weight:600;
+  color:var(--primary);
+  margin-bottom:0.4em;
+  margin-top:1em;
+}
+.metric-container {
+  display:flex;
+  flex-wrap:wrap;
+  gap:18px;
+  margin-bottom:1.2em;
+}
+.metric-card {
+  background:var(--card);
+  flex:1;
+  min-width:180px;
+  padding:16px 20px;
+  border-radius:12px;
+  box-shadow:var(--shadow);
+  border:1px solid rgba(0,0,0,0.02);
+}
+.metric-label {
+  font-size:0.95rem;
+  color:var(--muted);
+  margin-bottom:4px;
+}
+.metric-value {
+  font-size:1.8rem;
+  font-weight:800;
+  color:#0f172a;
+}
+.metric-delta {
+  font-size:0.8rem;
+  color:var(--success);
+  margin-top:3px;
+}
+.section-card {
+  background:var(--card);
+  border-radius:12px;
+  box-shadow:var(--shadow);
+  padding:18px 22px;
+  margin-top:10px;
+  border:1px solid rgba(0,0,0,0.02);
+}
+.section-title {
+  font-size:1rem;
+  font-weight:700;
+  color:#0f172a;
+  margin-bottom:0.5em;
+}
+.dataframe {
+  font-size:0.9rem;
+}
+.small-muted {
+  color:var(--muted);
+  font-size:0.8rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# === HEADER ===
-st.markdown(
-    """
-    <div class="dash-title">
-      <div style="font-size:32px; color:var(--accent);">💧</div>
-      <div>
-        <h1>Отчет по заявкам ЦДС водопровод</h1>
-        <div class="subtitle">2025 год – РВК</div>
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# === ЗАГОЛОВОК ===
+st.markdown("## 💧 Отчет по заявкам ЦДС водопровод")
+st.markdown("### 2025 год – РВК")
 
-# === Конфигурация листов ===
+# === МЕСЯЦЫ ===
 SHEET_NAMES = {
-    "jan": "jan", "feb": "feb", "mar": "mar", "apr": "apr", "may": "may",
-    "jun": "june", "jul": "jule", "aug": "aug", "sep": "sept", "oct": "oct",
-    "nov": "nov", "dec": "dec", "year": "gen"
+    "jan": "jan","feb": "feb","mar": "mar","apr": "apr","may": "may",
+    "jun": "june","jul": "jule","aug": "aug","sep": "sept","oct": "oct",
+    "nov": "nov","dec": "dec","year": "gen"
 }
-
 DISPLAY_NAMES = {
-    "jan": "Янв", "feb": "Фев", "mar": "Мар", "apr": "Апр", "may": "Май",
-    "jun": "Июн", "jul": "Июл", "aug": "Авг", "sep": "Сен", "oct": "Окт",
-    "nov": "Ноя", "dec": "Дек", "year": "Год"
+    "jan": "Янв","feb": "Фев","mar": "Мар","apr": "Апр","may": "Май",
+    "jun": "Июн","jul": "Июл","aug": "Авг","sep": "Сен","oct": "Окт",
+    "nov": "Ноя","dec": "Дек","year": "Год"
 }
-
-# === Кнопки месяцев — исправленный рендер в нескольких строках ===
-st.markdown("<div class='small-muted'>Период:</div>", unsafe_allow_html=True)
-months = list(DISPLAY_NAMES.items())
-for i in range(0, len(months), 6):
-    row = months[i:i+6]
-    cols = st.columns(len(row))
-    for j, (key, name) in enumerate(row):
-        with cols[j]:
-            if st.button(name, key=f"btn_{key}", use_container_width=True):
-                st.session_state.selected = key
-
+st.markdown("**Период:**")
+cols = st.columns(6)
+for i, (key, name) in enumerate(list(DISPLAY_NAMES.items())):
+    if cols[i%6].button(name, key=f"btn_{key}", use_container_width=True):
+        st.session_state.selected = key
 selected = st.session_state.get("selected", "jan")
 
-# === Подключение к Google Sheets ===
+# === GOOGLE SHEETS ===
 @st.cache_resource
 def get_client():
     try:
         info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-        creds = Credentials.from_service_account_info(
-            info,
-            scopes=[
-                "https://spreadsheets.google.com/feeds",
-                "https://www.googleapis.com/auth/drive"
-            ]
-        )
+        creds = Credentials.from_service_account_info(info, scopes=[
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"])
     except KeyError:
-        creds = Credentials.from_service_account_file(
-            "credentials.json",
-            scopes=[
-                "https://spreadsheets.google.com/feeds",
-                "https://www.googleapis.com/auth/drive"
-            ]
-        )
+        creds = Credentials.from_service_account_file("credentials.json", scopes=[
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"])
     return gspread.authorize(creds)
 
 def load_data(period_key: str) -> pd.DataFrame:
@@ -144,8 +161,8 @@ def load_data(period_key: str) -> pd.DataFrame:
     sheet_name = SHEET_NAMES[period_key]
     for attempt in range(3):
         try:
-            worksheet = client.open_by_key("1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k").worksheet(sheet_name)
-            values = worksheet.get("A4:F13")
+            ws = client.open_by_key("1v6GS19Ib3wnl5RGpDz31KPzDJ5T1pxd6rx1aTYzy63k").worksheet(sheet_name)
+            values = ws.get("A4:F13")
             break
         except gspread.exceptions.APIError as e:
             if hasattr(e, "response") and getattr(e.response, "status_code", None) == 500 and attempt < 2:
@@ -156,115 +173,77 @@ def load_data(period_key: str) -> pd.DataFrame:
     columns = ["organization", "total", "closed", "open", "cancelled", "erroneous"]
     if not values:
         return pd.DataFrame(columns=columns)
-    cleaned = [row for row in values if row and str(row[0]).strip()]
-    normalized = []
-    for row in cleaned:
-        while len(row) < len(columns):
-            row.append("")
-        normalized.append(row[:len(columns)])
+    cleaned = [r for r in values if r and str(r[0]).strip()]
+    normalized = [r + [""]*(len(columns)-len(r)) for r in cleaned]
     return pd.DataFrame(normalized, columns=columns)
 
-# === Загрузка данных ===
+# === ЗАГРУЗКА ===
 try:
     df = load_data(selected)
 except Exception as e:
     st.error(f"Ошибка загрузки листа '{SHEET_NAMES[selected]}': {e}")
     st.stop()
 
-numeric_cols = ["total", "closed", "open", "cancelled", "erroneous"]
-for col in numeric_cols:
+for col in ["total","closed","open","cancelled","erroneous"]:
     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
-# === Основные показатели (с карточками) — надёжный рендер через st.columns ===
-total = int(df["total"].sum())
-closed = int(df["closed"].sum())
-open_ = int(df["open"].sum())
-cancelled = int(df["cancelled"].sum())
+# === МЕТРИКИ ===
+total, closed, open_, cancelled = df["total"].sum(), df["closed"].sum(), df["open"].sum(), df["cancelled"].sum()
+delta_closed = "100% выполнение" if total and closed == total else ""
+delta_open = "Требуют внимания" if open_ > 0 else ""
+delta_cancel = "Ошибочно или отменено" if cancelled > 0 else ""
 
-def metric_html(label: str, value: int, delta_text: str = ""):
-    delta_html = f'<div class="metric-delta">{delta_text}</div>' if delta_text else ""
-    return f"""
-    <div class="metric-card" style="padding:14px;">
-      <div class="metric-label">{label}</div>
-      <div class="metric-value">{value}</div>
-      {delta_html}
+st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
+for label, val, delta in [
+    ("Всего заявок", total, ""),
+    ("Закрытых заявок", closed, delta_closed),
+    ("Открытых заявок", open_, delta_open),
+    ("Отмененных заявок", cancelled, delta_cancel),
+]:
+    st.markdown(f"""
+    <div class='metric-card'>
+      <div class='metric-label'>{label}</div>
+      <div class='metric-value'>{val}</div>
+      <div class='metric-delta'>{delta}</div>
     </div>
-    """
+    """, unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
-mcol1, mcol2, mcol3, mcol4 = st.columns([1,1,1,1], gap="large")
-with mcol1:
-    st.markdown(metric_html("Всего заявок", total, ""), unsafe_allow_html=True)
-with mcol2:
-    st.markdown(metric_html("Закрытых заявок", closed, "100% выполнение" if total>0 and closed==total else ""), unsafe_allow_html=True)
-with mcol3:
-    st.markdown(metric_html("Открытых заявок", open_, "Требуют внимания" if open_>0 else ""), unsafe_allow_html=True)
-with mcol4:
-    st.markdown(metric_html("Отмененных заявок", cancelled, "Ошибочно или отменено" if cancelled>0 else ""), unsafe_allow_html=True)
-
-# === Графики (лево: пирог, право: столбцы) в карточках ===
+# === ГРАФИКИ ===
 active = df[df["total"] > 0].copy()
-if active.empty:
-    st.info("Нет данных для построения графиков по выбранному периоду.")
-else:
-    chart_data = active[["organization", "total", "closed"]].rename(columns={
-        "organization": "Организация",
-        "total": "Всего",
-        "closed": "Закрыто"
-    })
+if not active.empty:
+    chart_data = active[["organization","total","closed"]].rename(
+        columns={"organization":"Организация","total":"Всего","closed":"Закрыто"})
 
-    col_left, col_right = st.columns([1, 1], gap="large")
-
-    with col_left:
-        st.markdown('<div class="card"><div class="card-title">Распределение заявок по организациям</div>', unsafe_allow_html=True)
-        fig1 = px.pie(
-            chart_data,
-            values="Всего",
-            names="Организация",
-            hole=0.45,
-            color_discrete_sequence=px.colors.sequential.Blues
-        )
-        fig1.update_traces(textposition="inside", textinfo="percent+label",
-                           hovertemplate="<b>%{label}</b><br>Заявок: %{value}<extra></extra>")
-        fig1.update_layout(margin=dict(t=10, b=10, l=10, r=10), showlegend=True, legend=dict(orientation="h", y=-0.12, x=0.5))
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("<div class='section-card'><div class='section-title'>Распределение по организациям</div>", unsafe_allow_html=True)
+        fig1 = px.pie(chart_data, values="Всего", names="Организация",
+                      hole=0.45, color_discrete_sequence=px.colors.sequential.Blues)
+        fig1.update_traces(textposition="inside", textinfo="percent+label", hovertemplate="<b>%{label}</b><br>Заявок: %{value}<extra></extra>")
+        fig1.update_layout(showlegend=True, legend=dict(orientation="h", y=-0.15, x=0.5), margin=dict(t=10,b=10,l=10,r=10))
         st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    with col_right:
-        st.markdown('<div class="card"><div class="card-title">Сравнение заявок по организациям</div><div class="card-sub">Всего vs Закрыто</div>', unsafe_allow_html=True)
-        bar_data = chart_data.melt(id_vars="Организация", value_vars=["Всего", "Закрыто"])
-        COLOR_MAP = {"Всего": "#3b82f6", "Закрыто": "#10b981"}
-        fig2 = px.bar(
-            bar_data,
-            x="Организация",
-            y="value",
-            color="variable",
-            barmode="group",
-            color_discrete_map=COLOR_MAP,
-            labels={"value": "Количество", "Организация": ""}
-        )
-        fig2.update_layout(margin=dict(t=6, b=80, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{y}<extra></extra>")
+    with col2:
+        st.markdown("<div class='section-card'><div class='section-title'>Всего vs Закрыто</div>", unsafe_allow_html=True)
+        bar_data = chart_data.melt(id_vars="Организация", value_vars=["Всего","Закрыто"])
+        fig2 = px.bar(bar_data, x="Организация", y="value", color="variable",
+                      barmode="group", color_discrete_map={"Всего":"#3b82f6","Закрыто":"#10b981"})
+        fig2.update_layout(legend=dict(orientation="h", y=1.05, x=1), margin=dict(t=10,b=60,l=10,r=10))
         fig2.update_xaxes(tickangle=-45)
         st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-# === Детальная таблица в минималистичном виде ===
-st.markdown('<div class="detail-title">Детальная информация</div>', unsafe_allow_html=True)
-
+# === ТАБЛИЦА ===
+st.markdown("<div class='section-card'><div class='section-title'>Детальная информация</div>", unsafe_allow_html=True)
 display_df = df.rename(columns={
-    "organization": "Организация",
-    "total": "Всего",
-    "closed": "Закрыто",
-    "open": "Открыто",
-    "cancelled": "Отменено",
-    "erroneous": "Ошибочно"
-})
-
-st.markdown('<div class="card">', unsafe_allow_html=True)
+    "organization":"Организация","total":"Всего","closed":"Закрыто",
+    "open":"Открыто","cancelled":"Отменено","erroneous":"Ошибочно"})
 st.dataframe(display_df, use_container_width=True, hide_index=True)
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
-# === Подпись с последним обновлением ===
+# === ОБНОВЛЕНИЕ ===
 astana_tz = pytz.timezone("Asia/Almaty")
 current_time = datetime.now(astana_tz).strftime('%d.%m.%Y %H:%M')
-st.markdown(f'<div style="margin-top:10px;" class="small-muted">Данные обновлены: {current_time} (Астана)</div>', unsafe_allow_html=True)
+st.markdown(f"<div class='small-muted'>Данные обновлены: {current_time} (Астана)</div>", unsafe_allow_html=True)
