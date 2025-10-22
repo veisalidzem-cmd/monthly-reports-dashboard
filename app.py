@@ -40,63 +40,43 @@ import time
 
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
 
-# === СТИЛЬ ВТОРОГО ДАШБОРДА ===
+# === ПРОФЕССИОНАЛЬНЫЙ СТИЛЬ ===
 st.markdown("""
 <style>
-    :root {
-        --primary: #2563eb;
-        --success: #10b981;
-        --warning: #f59e0b;
-        --danger: #ef4444;
-        --bg: #f8fafc;
-        --card-bg: white;
-        --text: #1e293b;
-        --text-light: #64748b;
-        --shadow: 0 4px 12px rgba(0,0,0,0.05);
-    }
-
-    .main { background-color: var(--bg); padding: 20px !important; }
-    .stApp { background-color: var(--bg); }
-
+    .main { background-color: white; padding: 24px !important; }
     h1 {
-        font-size: 2.2rem !important;
-        color: var(--text);
+        font-size: 2.3rem;
         font-weight: 700;
-        margin-bottom: 0.5em;
+        color: #1e293b;
+        margin-bottom: 0.4em;
     }
     h2 {
-        font-size: 1.6rem !important;
-        color: var(--text);
-        margin-top: 1.5em;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #334155;
+        margin-top: 1.4em;
         margin-bottom: 0.8em;
     }
-
     [data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
+        font-size: 1.9rem !important;
         font-weight: 700;
-        color: var(--text);
+        color: #0f172a;
     }
     [data-testid="stMetricLabel"] {
         font-size: 1.1rem !important;
-        color: var(--text-light);
+        color: #475569;
     }
-
     .dataframe {
         font-size: 1.05rem;
-        border-radius: 10px;
-        box-shadow: var(--shadow);
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
-
     .stButton > button {
-        height: 44px !important;
-        font-size: 0.95rem !important;
+        height: 42px;
+        font-size: 0.95rem;
         font-weight: 500;
         border-radius: 6px;
-    }
-
-    @media print {
-        @page { size: A4; margin: 1cm; }
-        * { zoom: 0.85 !important; }
+        border: 1px solid #e2e8f0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -188,7 +168,7 @@ numeric_cols = ["total", "closed", "open", "cancelled", "erroneous"]
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
-# === Статистика (как во втором дашборде) ===
+# === Статистика ===
 total = df["total"].sum()
 closed = df["closed"].sum()
 open_ = df["open"].sum()
@@ -204,15 +184,10 @@ with col3:
 with col4:
     st.metric("Отмененных заявок", cancelled, delta="Ошибочно или отменено" if cancelled > 0 else None)
 
-# === Графики (в стиле второго дашборда) ===
+# === Графики (минималистичные) ===
 active = df[df["total"] > 0].copy()
 if not active.empty:
-    # Подготовка данных: только "Всего" и "Закрыто"
-    chart_data = active[["organization", "total", "closed"]].rename(columns={
-        "organization": "Организация",
-        "total": "Всего",
-        "closed": "Закрыто"
-    })
+    chart_data = active[["organization", "total"]].rename(columns={"organization": "Организация", "total": "Всего"})
     
     g1, g2 = st.columns(2)
     with g1:
@@ -220,8 +195,8 @@ if not active.empty:
             chart_data,
             values="Всего",
             names="Организация",
-            hole=0.4,
-            color_discrete_sequence=px.colors.qualitative.Pastel
+            hole=0.5,
+            color_discrete_sequence=["#2563eb"]
         )
         fig1.update_traces(
             textposition="inside",
@@ -239,20 +214,18 @@ if not active.empty:
     
     with g2:
         fig2 = px.bar(
-            chart_data.melt(id_vars="Организация", value_vars=["Всего", "Закрыто"]),
+            chart_data,
             x="Организация",
-            y="value",
-            color="variable",
-            barmode="group",
-            color_discrete_map={"Всего": "#2563eb", "Закрыто": "#10b981"}
+            y="Всего",
+            color_discrete_sequence=["#2563eb"]
         )
         fig2.update_layout(
-            title="Всего vs Закрыто",
+            title="Всего заявок по организациям",
             title_x=0.5,
             xaxis_tickangle=-45,
             margin=dict(t=40, b=100, l=40, r=20),
-            legend_title_text="",
-            font_size=11
+            font_size=11,
+            showlegend=False
         )
         fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{y}<extra></extra>")
         st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
