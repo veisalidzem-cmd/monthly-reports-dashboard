@@ -1,4 +1,36 @@
 import streamlit as st
+
+# === АУТЕНТИФИКАЦИЯ ===
+def check_password():
+    def login_form():
+        st.markdown("### 🔒 Доступ для руководства")
+        with st.form("login"):
+            st.text_input("Логин", key="username")
+            st.text_input("Пароль", type="password", key="password")
+            if st.form_submit_button("Войти"):
+                if (
+                    st.session_state.username == st.secrets["AUTH_USERNAME"]
+                    and st.session_state.password == st.secrets["AUTH_PASSWORD"]
+                ):
+                    st.session_state.authenticated = True
+                    # Очищаем чувствительные данные
+                    del st.session_state.username
+                    del st.session_state.password
+                    st.rerun()
+                else:
+                    st.error("❌ Неверный логин или пароль")
+    
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        login_form()
+        st.stop()
+
+# Выполняем проверку ДО всего остального
+check_password()
+# === ОСНОВНОЙ КОД
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
