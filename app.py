@@ -3,7 +3,7 @@ import streamlit as st
 # === АУТЕНТИФИКАЦИЯ ===
 def check_password():
     def login_form():
-        st.markdown("### 🔒 Доступ для руководства")
+        st.markdown("### 🔒 Введите пароль для доступа")
         with st.form("login"):
             st.text_input("Логин", key="username")
             st.text_input("Пароль", type="password", key="password")
@@ -312,7 +312,7 @@ if not active.empty:
         fig1.update_layout(
             title="По организациям",
             title_x=0.5,
-            showlegend=False,
+            # showlegend=False,
             margin=dict(t=40, b=10, l=10, r=10),
             font_size=11
         )
@@ -341,7 +341,7 @@ if not active.empty:
             xaxis_tickangle=-45,
             margin=dict(t=40, b=80, l=30, r=10),
             font_size=10,
-            showlegend=False
+            # showlegend=False
         )
         fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{series}: %{y}<extra></extra>")
         st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
