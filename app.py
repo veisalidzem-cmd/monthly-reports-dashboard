@@ -40,20 +40,20 @@ import time
 
 st.set_page_config(page_title="Отчет по заявкам ЦДС водопровод", layout="wide")
 
-# === ПРОФЕССИОНАЛЬНЫЙ СТИЛЬ ===
+# === СТИЛЬ: ЧИТАЕМЫЙ, ПРОФЕССИОНАЛЬНЫЙ ===
 st.markdown("""
 <style>
     .main { background-color: white; padding: 24px !important; }
     h1 {
-        font-size: 2.3rem;
-        font-weight: 700;
-        color: #1e293b;
+        font-size: 2.4rem;
+        font-weight: 800;
+        color: #1e3a8a;
         margin-bottom: 0.4em;
     }
     h2 {
-        font-size: 1.5rem;
+        font-size: 1.6rem;
         font-weight: 600;
-        color: #334155;
+        color: #1e293b;
         margin-top: 1.4em;
         margin-bottom: 0.8em;
     }
@@ -184,10 +184,14 @@ with col3:
 with col4:
     st.metric("Отмененных заявок", cancelled, delta="Ошибочно или отменено" if cancelled > 0 else None)
 
-# === Графики (минималистичные) ===
+# === Графики с легендой и двумя сериями ===
 active = df[df["total"] > 0].copy()
 if not active.empty:
-    chart_data = active[["organization", "total"]].rename(columns={"organization": "Организация", "total": "Всего"})
+    chart_data = active[["organization", "total", "closed"]].rename(columns={
+        "organization": "Организация",
+        "total": "Всего",
+        "closed": "Закрыто"
+    })
     
     g1, g2 = st.columns(2)
     with g1:
@@ -195,8 +199,8 @@ if not active.empty:
             chart_data,
             values="Всего",
             names="Организация",
-            hole=0.5,
-            color_discrete_sequence=["#2563eb"]
+            hole=0.4,
+            color_discrete_sequence=px.colors.qualitative.Pastel
         )
         fig1.update_traces(
             textposition="inside",
@@ -206,26 +210,44 @@ if not active.empty:
         fig1.update_layout(
             title="Распределение по организациям",
             title_x=0.5,
-            showlegend=False,
-            margin=dict(t=40, b=20, l=20, r=20),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.3,
+                xanchor="center",
+                x=0.5,
+                font_size=10
+            ),
+            margin=dict(t=40, b=60, l=20, r=20),
             font_size=12
         )
         st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
     
     with g2:
+        COLOR_MAP = {"Всего": "#3b82f6", "Закрыто": "#10b981"}
         fig2 = px.bar(
-            chart_data,
+            chart_data.melt(id_vars="Организация", value_vars=["Всего", "Закрыто"]),
             x="Организация",
-            y="Всего",
-            color_discrete_sequence=["#2563eb"]
+            y="value",
+            color="variable",
+            barmode="group",
+            color_discrete_map=COLOR_MAP
         )
         fig2.update_layout(
-            title="Всего заявок по организациям",
+            title="Всего vs Закрыто",
             title_x=0.5,
             xaxis_tickangle=-45,
             margin=dict(t=40, b=100, l=40, r=20),
-            font_size=11,
-            showlegend=False
+            legend=dict(
+                title="",
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                font_size=10
+            ),
+            font_size=11
         )
         fig2.update_traces(hovertemplate="<b>%{x}</b><br>%{y}<extra></extra>")
         st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
